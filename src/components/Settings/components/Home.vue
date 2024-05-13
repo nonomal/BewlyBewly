@@ -1,11 +1,21 @@
 <script lang="ts" setup>
-import type { Ref } from 'vue'
 import QRCodeVue from 'qrcode.vue'
+import type { Ref } from 'vue'
 import { useToast } from 'vue-toastification'
-import SearchPage from './SearchPage.vue'
-import { getTVLoginQRCode, pollTVLoginQRCode, revokeAccessKey } from '~/utils/authProvider'
-import { accessKey, settings } from '~/logic'
+import draggable from 'vuedraggable'
 
+import Button from '~/components/Button.vue'
+import Radio from '~/components/Radio.vue'
+import { accessKey, settings } from '~/logic'
+import { useMainStore } from '~/stores/mainStore'
+import { getTVLoginQRCode, pollTVLoginQRCode, revokeAccessKey } from '~/utils/authProvider'
+
+import ChildSettingsDialog from './ChildSettingsDialog.vue'
+import SearchPage from './SearchPage.vue'
+import SettingsItem from './SettingsItem.vue'
+import SettingsItemGroup from './SettingsItemGroup.vue'
+
+const mainStore = useMainStore()
 const toast = useToast()
 
 const showSearchPageModeSharedSettings = ref<boolean>(false)
@@ -95,6 +105,23 @@ function handleCloseSearchPageModeSharedSettings() {
   showSearchPageModeSharedSettings.value = false
   preventCloseSettings.value = false
 }
+
+function resetHomeTabs() {
+  settings.value.homePageTabVisibilityList = mainStore.homeTabs.map((tab) => {
+    return {
+      page: tab.page,
+      visible: true,
+    }
+  })
+}
+
+function handleToggleHomeTab(tab: any) {
+  // Prevent disabling all tabs if there is only one
+  if (settings.value.homePageTabVisibilityList.filter(tab => tab.visible === true).length > 1)
+    tab.visible = !tab.visible
+  else
+    tab.visible = true
+}
 </script>
 
 <template>
@@ -161,8 +188,11 @@ function handleCloseSearchPageModeSharedSettings() {
         <div flex="~ gap-4 col items-center">
           <p>{{ $t('settings.scan_qrcode_desc') }}</p>
 
-          <div mt-4 bg="$bew-fill-1" w-150px h-150px>
+          <div mt-4 bg-white border="white 4">
             <QRCodeVue v-if="loginQRCodeUrl" :value="loginQRCodeUrl" :size="150" />
+            <div v-else w-150px h-150px grid="~ place-items-center">
+              <div i-svg-spinners:ring-resize />
+            </div>
           </div>
 
           <p>{{ qrcodeMsg }}</p>
@@ -176,36 +206,78 @@ function handleCloseSearchPageModeSharedSettings() {
         </div>
       </ChildSettingsDialog>
     </SettingsItemGroup>
+    <SettingsItemGroup
+      :title="$t('settings.group_home_tabs')"
+    >
+      <SettingsItem next-line :desc="$t('settings.home_tabs_adjustment_desc')">
+        <template #title>
+          <div flex="~ gap-4 items-center">
+            {{ $t('settings.home_tabs_adjustment') }}
+            <Button size="small" type="secondary" @click="resetHomeTabs">
+              <template #left>
+                <div i-mingcute:back-line />
+              </template>
+              {{ $t('common.reset') }}
+            </Button>
+          </div>
+        </template>
+        <draggable
+          v-model="settings.homePageTabVisibilityList"
+          item-key="page"
+          :component-data="{ style: 'display: flex; gap: 0.5rem; flex-wrap: wrap;' }"
+        >
+          <template #item="{ element }">
+            <div
+              flex="~ gap-2 items-center" p="x-4 y-2" bg="$bew-fill-1" rounded="$bew-radius" cursor-all-scroll
+              duration-300
+              :style="{
+                background: element.visible ? 'var(--bew-theme-color)' : 'var(--bew-fill-1)',
+                color: element.visible ? 'white' : 'var(--bew-text-1)',
+              }"
+              @click="handleToggleHomeTab(element)"
+            >
+              {{ $t(mainStore.homeTabs.find(tab => tab.page === element.page)?.i18nKey ?? '') }}
+            </div>
+          </template>
+        </draggable>
+      </SettingsItem>
+    </SettingsItemGroup>
 
     <SettingsItemGroup :title="$t('settings.group_search_page_mode')">
       <SettingsItem :title="$t('settings.use_search_page_mode')">
         <Radio v-model="settings.useSearchPageModeOnHomePage" />
       </SettingsItem>
-      <SettingsItem :title="$t('settings.settings_shared_with_the_search_page')">
-        <template #desc>
-          <span color="$bew-warning-color">{{ $t('settings.settings_shared_with_the_search_page_desc') }}</span>
-        </template>
-        <Button type="secondary" block center @click="handleOpenSearchPageModeSharedSettings">
-          {{ $t('settings.btn.open_settings') }}
-        </Button>
-
-        <ChildSettingsDialog
-          v-if="showSearchPageModeSharedSettings"
-          :title="$t('settings.settings_shared_with_the_search_page')"
-          style="--b-dialog-height: 85%;"
-          @close="handleCloseSearchPageModeSharedSettings"
-        >
+      <template v-if="settings.useSearchPageModeOnHomePage">
+        <SettingsItem :title="$t('settings.settings_shared_with_the_search_page')">
           <template #desc>
             <span color="$bew-warning-color">{{ $t('settings.settings_shared_with_the_search_page_desc') }}</span>
           </template>
+          <Button type="secondary" block center @click="handleOpenSearchPageModeSharedSettings">
+            {{ $t('settings.btn.open_settings') }}
+          </Button>
 
-          <SearchPage />
-        </ChildSettingsDialog>
-      </SettingsItem>
+          <ChildSettingsDialog
+            v-if="showSearchPageModeSharedSettings"
+            :title="$t('settings.settings_shared_with_the_search_page')"
+            style="--b-dialog-height: 85%;"
+            @close="handleCloseSearchPageModeSharedSettings"
+          >
+            <template #desc>
+              <span color="$bew-warning-color">{{ $t('settings.settings_shared_with_the_search_page_desc') }}</span>
+            </template>
 
-      <SettingsItem :title="$t('settings.search_page_mode_wallpaper_fixed')">
-        <Radio v-model="settings.searchPageModeWallpaperFixed" />
-      </SettingsItem>
+            <SearchPage />
+          </ChildSettingsDialog>
+        </SettingsItem>
+
+        <SettingsItem :title="$t('settings.search_page_mode_wallpaper_fixed')">
+          <Radio v-model="settings.searchPageModeWallpaperFixed" />
+        </SettingsItem>
+
+        <SettingsItem :title="$t('settings.always_show_the_top_bar_logo')">
+          <Radio v-model="settings.alwaysShowTheTopBarLogoOnSearchPageMode" />
+        </SettingsItem>
+      </template>
     </SettingsItemGroup>
   </div>
 </template>

@@ -1,12 +1,18 @@
 <script setup lang="ts">
 import { useDateFormat } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
-import { getCSRF, openLinkToNewTab, removeHttpFromUrl } from '~/utils/main'
-import { calcCurrentTime } from '~/utils/dataFormatter'
+
+import Button from '~/components/Button.vue'
+import Empty from '~/components/Empty.vue'
+import Progress from '~/components/Progress.vue'
+import { useApiClient } from '~/composables/api'
+import { useBewlyApp } from '~/composables/useAppProvider'
 import type { List as VideoItem, WatchLaterResult } from '~/models/video/watchLater'
+import { calcCurrentTime } from '~/utils/dataFormatter'
+import { getCSRF, openLinkToNewTab, removeHttpFromUrl } from '~/utils/main'
 
 const { t } = useI18n()
-
+const api = useApiClient()
 const isLoading = ref<boolean>()
 const noMoreContent = ref<boolean>()
 const watchLaterList = reactive<VideoItem[]>([])
@@ -33,10 +39,7 @@ function initPageAction() {
 function getAllWatchLaterList() {
   isLoading.value = true
   watchLaterList.length = 0
-  browser.runtime
-    .sendMessage({
-      contentScriptQuery: 'getAllWatchLaterList',
-    })
+  api.watchlater.getAllWatchLaterList()
     .then((res: WatchLaterResult) => {
       if (res.code === 0)
         Object.assign(watchLaterList, res.data.list)
@@ -46,12 +49,10 @@ function getAllWatchLaterList() {
 }
 
 function deleteWatchLaterItem(index: number, aid: number) {
-  browser.runtime
-    .sendMessage({
-      contentScriptQuery: 'removeFromWatchLater',
-      aid,
-      csrf: getCSRF(),
-    })
+  api.watchlater.removeFromWatchLater({
+    aid,
+    csrf: getCSRF(),
+  })
     .then((res) => {
       if (res.code === 0)
         watchLaterList.splice(index, 1)
@@ -64,8 +65,7 @@ function handleClearAllWatchLater() {
   )
   if (result) {
     isLoading.value = true
-    browser.runtime.sendMessage({
-      contentScriptQuery: 'clearAllWatchLater',
+    api.watchlater.clearAllWatchLater({
       csrf: getCSRF(),
     }).then((res) => {
       if (res.code === 0)
@@ -81,12 +81,10 @@ function handleRemoveWatchedVideos() {
     t('watch_later.remove_watched_videos_confirm'),
   )
   if (result) {
-    browser.runtime
-      .sendMessage({
-        contentScriptQuery: 'removeFromWatchLater',
-        viewed: true,
-        csrf: getCSRF(),
-      })
+    api.watchlater.removeFromWatchLater({
+      viewed: true,
+      csrf: getCSRF(),
+    })
       .then((res) => {
         if (res.code === 0)
           getAllWatchLaterList()
@@ -116,11 +114,9 @@ function jumpToLoginPage() {
           <a
             v-for="(item, index) in watchLaterList"
             :key="item.aid"
-            block
+            :href="`https://www.bilibili.com/list/watchlater?bvid=${item.bvid}`" target="_blank" rel="noopener noreferrer"
             class="group"
-            flex
-            cursor-pointer
-            @click="openLinkToNewTab(`https://www.bilibili.com/list/watchlater?bvid=${item.bvid}`)"
+            block flex cursor-pointer
           >
             <section
               rounded="$bew-radius"
@@ -196,8 +192,7 @@ function jumpToLoginPage() {
                     class="keep-two-lines"
                     overflow="hidden"
                     un-text="lg overflow-ellipsis"
-                    :href="removeHttpFromUrl(`https://www.bilibili.com/list/watchlater?bvid=${item.bvid}`)" target="_blank"
-                    @click.stop=""
+                    :href="removeHttpFromUrl(`https://www.bilibili.com/list/watchlater?bvid=${item.bvid}`)" target="_blank" rel="noopener noreferrer"
                   >
                     {{ item.title }}
                   </a>
@@ -213,8 +208,7 @@ function jumpToLoginPage() {
                     hover:bg="$bew-theme-color-10"
                     duration-300
                     pr-2
-                    :href="`//space.bilibili.com/${item.owner.mid}`" target="_blank"
-                    @click.stop=""
+                    :href="`//space.bilibili.com/${item.owner.mid}`" target="_blank" rel="noopener noreferrer"
                   >
                     <img
                       :src="removeHttpFromUrl(`${item.owner.face}@40w_40h_1c`)"
@@ -244,9 +238,9 @@ function jumpToLoginPage() {
                     opacity-0 group-hover:opacity-100
                     p-2
                     duration-300
-                    @click.stop="deleteWatchLaterItem(index, item.aid)"
+                    @click.prevent="deleteWatchLaterItem(index, item.aid)"
                   >
-                    <tabler:trash />
+                    <div i-tabler:trash />
                   </button>
                 </div>
 
@@ -274,7 +268,10 @@ function jumpToLoginPage() {
           pos="absolute top-0 left-0" w-full h-full bg-cover bg-center
           z--1
         >
-          <div absolute w-full h-full style="backdrop-filter: blur(60px) saturate(180%)" bg="$bew-fill-4" />
+          <div
+            absolute w-full h-full backdrop-blur-40px transform-gpu
+            bg="$bew-fill-4"
+          />
           <img
             v-if="watchLaterList[0]"
             :src="removeHttpFromUrl(`${watchLaterList[0].pic}@480w_270h_1c`)"
@@ -301,16 +298,16 @@ function jumpToLoginPage() {
             @click="handlePlayAll"
           >
             <template #left>
-              <tabler:player-play />
+              <div i-tabler:player-play />
             </template>
-            {{ t('watch_later.play_all') }}
+            {{ t('common.play_all') }}
           </Button>
           <Button
             color="rgba(255,255,255,.35)" block text-color="white" strong flex-1
             @click="handleClearAllWatchLater"
           >
             <template #left>
-              <tabler:trash />
+              <div i-tabler:trash />
             </template>
             {{ t('watch_later.clear_all') }}
           </Button>
@@ -319,7 +316,7 @@ function jumpToLoginPage() {
             @click="handleRemoveWatchedVideos"
           >
             <template #left>
-              <tabler:circle-minus />
+              <div i-tabler:circle-minus />
             </template>
             {{ t('watch_later.remove_watched_videos') }}
           </Button>

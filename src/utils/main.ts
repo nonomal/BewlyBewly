@@ -8,6 +8,7 @@ export function getCookie(name: string): string {
   const parts: Array<string> = value.split(`; ${name}=`)
   if (parts.length === 2)
     return parts?.pop()?.split(';').shift() || ''
+  return ''
 }
 
 /**
@@ -43,7 +44,7 @@ export function removeHttpFromUrl(url: string): string {
 }
 
 export function openLinkToNewTab(url: string) {
-  window.open(url, '_blank')
+  window.open(url, '_blank', 'noopener noreferrer')
 }
 
 /**
@@ -114,11 +115,11 @@ export function delay(ms: number) {
  */
 export function isHomePage(): boolean {
   if (
-    /https?:\/\/bilibili.com\/?$/.test(location.href)
-    || /https?:\/\/www.bilibili.com\/?$/.test(location.href)
-    || /https?:\/\/www.bilibili.com\/index.html$/.test(location.href)
-    || /https?:\/\/bilibili.com\/\?spm_id_from=.*/.test(location.href)
-    || /https?:\/\/www.bilibili.com\/\?spm_id_from=(.)*/.test(location.href)
+    /https?:\/\/(www\.)bilibili.com\/?(#\/?)?$/.test(location.href)
+    // https://github.com/hakadao/BewlyBewly/issues/525 #525
+    || /https?:\/\/(www\.)bilibili.com(\/)?(\?.*)?$/.test(location.href)
+    || /https?:\/\/(www\.)bilibili.com\/index\.html$/.test(location.href)
+    || /https?:\/\/(www\.)?bilibili.com\/\?spm_id_from=(.)*/.test(location.href)
   )
     return true
   return false

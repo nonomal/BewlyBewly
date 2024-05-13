@@ -2,11 +2,14 @@
 import type { Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import browser from 'webextension-polyfill'
-import { removeHttpFromUrl } from '~/utils/main'
+
+import HorizontalScrollView from '~/components/HorizontalScrollView.vue'
+import { useApiClient } from '~/composables/api'
 import type { Result as TimetableItem, TimetableResult } from '~/models/anime/timeTable'
+import { removeHttpFromUrl } from '~/utils/main'
 
 const { t } = useI18n()
-
+const api = useApiClient()
 const animeTimeTable = reactive<TimetableItem[]>([])
 const animeTimeTableWrap = ref<HTMLElement>() as Ref<HTMLElement>
 
@@ -32,10 +35,7 @@ function refreshAnimeTimeTable() {
 }
 
 function getAnimeTimeTable() {
-  browser.runtime
-    .sendMessage({
-      contentScriptQuery: 'getAnimeTimeTable',
-    })
+  api.anime.getAnimeTimeTable()
     .then((res: TimetableResult) => {
       const { code, result } = res
       if (code === 0)

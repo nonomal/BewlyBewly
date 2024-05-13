@@ -1,13 +1,24 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import { getCSRF, getUserID, openLinkToNewTab, removeHttpFromUrl } from '~/utils/main'
+
+import Button from '~/components/Button.vue'
+import Empty from '~/components/Empty.vue'
+import Input from '~/components/Input.vue'
+import Loading from '~/components/Loading.vue'
+import Select from '~/components/Select.vue'
+import Tooltip from '~/components/Tooltip.vue'
 import type { FavoriteCategory, FavoriteResource } from '~/components/TopBar/types'
-import emitter from '~/utils/mitt'
+import VideoCard from '~/components/VideoCard/VideoCard.vue'
+import { useApiClient } from '~/composables/api'
+import { useBewlyApp } from '~/composables/useAppProvider'
 import { settings } from '~/logic'
-import type { Media as FavoriteItem, FavoritesResult } from '~/models/video/favorite'
-import type { List as CategoryItem, FavoritesCategoryResult } from '~/models/video/favoriteCategory'
+import type { FavoritesResult, Media as FavoriteItem } from '~/models/video/favorite'
+import type { FavoritesCategoryResult, List as CategoryItem } from '~/models/video/favoriteCategory'
+import { getCSRF, getUserID, openLinkToNewTab, removeHttpFromUrl } from '~/utils/main'
+import emitter from '~/utils/mitt'
 
 const { t } = useI18n()
+const api = useApiClient()
 
 const favoriteCategories = reactive<CategoryItem[]>([])
 const favoriteResources = reactive<FavoriteItem[]>([])
@@ -72,11 +83,9 @@ function initPageAction() {
 }
 
 async function getFavoriteCategories() {
-  await browser.runtime
-    .sendMessage({
-      contentScriptQuery: 'getFavoriteCategories',
-      mid: getUserID(),
-    })
+  await api.favorite.getFavoriteCategories({
+    up_mid: getUserID(),
+  })
     .then((res: FavoritesCategoryResult) => {
       if (res.code === 0) {
         Object.assign(favoriteCategories, res.data.list)
@@ -94,26 +103,24 @@ async function getFavoriteCategories() {
 
 /**
  * Get favorite video resources
- * @param mediaId
- * @param pageNum
+ * @param media_id
+ * @param pn
  * @param keyword
  */
 async function getFavoriteResources(
-  mediaId: number,
-  pageNum: number,
+  media_id: number,
+  pn: number,
   keyword = '' as string,
 ) {
-  if (pageNum === 1)
+  if (pn === 1)
     isFullPageLoading.value = true
   isLoading.value = true
   try {
-    const res: FavoritesResult = await browser.runtime
-      .sendMessage({
-        contentScriptQuery: 'getFavoriteResources',
-        mediaId,
-        pageNum,
-        keyword,
-      })
+    const res: FavoritesResult = await api.favorite.getFavoriteResources({
+      media_id,
+      pn,
+      keyword,
+    })
 
     if (res.code === 0) {
       activatedCategoryCover.value = res.data.info.cover
@@ -134,8 +141,8 @@ async function getFavoriteResources(
 async function changeCategory(categoryItem: FavoriteCategory) {
   currentPageNum.value = 1
   selectedCategory.value = categoryItem
-  noMoreContent.value = false
   favoriteResources.length = 0
+  noMoreContent.value = false
 
   getFavoriteResources(categoryItem.id, 1)
 }
@@ -157,15 +164,18 @@ function jumpToLoginPage() {
 }
 
 function handleUnfavorite(favoriteResource: FavoriteResource) {
-  browser.runtime.sendMessage({
-    contentScriptQuery: 'patchDelFavoriteResources',
+  api.favorite.patchDelFavoriteResources({
     resources: `${favoriteResource.id}:${favoriteResource.type}`,
-    mediaId: selectedCategory.value?.id,
+    media_id: selectedCategory.value?.id,
     csrf: getCSRF(),
   }).then((res) => {
     if (res.code === 0)
       favoriteResources.splice(favoriteResources.indexOf(favoriteResource as FavoriteItem), 1)
   })
+}
+
+function isMusic(item: FavoriteResource) {
+  return item.link.includes('bilibili://music')
 }
 </script>
 
@@ -185,7 +195,7 @@ function handleUnfavorite(favoriteResource: FavoriteResource) {
         <Input v-model="keyword" w-250px @enter="handleSearch" />
         <Button type="primary" @click="handleSearch">
           <template #left>
-            <tabler:search />
+            <div i-tabler:search />
           </template>
         </Button>
         <!-- <h3
@@ -204,7 +214,6 @@ function handleUnfavorite(favoriteResource: FavoriteResource) {
           <TransitionGroup name="list">
             <VideoCard
               v-for="item in favoriteResources" :id="item.id" :key="item.id"
-              :item="item"
               :duration="item.duration"
               :title="item.title"
               :cover="item.cover"
@@ -214,7 +223,8 @@ function handleUnfavorite(favoriteResource: FavoriteResource) {
               :view="item.cnt_info.play"
               :danmaku="item.cnt_info.danmaku"
               :published-timestamp="item.pubtime"
-              :bvid="item.bvid"
+              :bvid="isMusic(item) ? undefined : item.bvid"
+              :uri="isMusic(item) ? `https://www.bilibili.com/audio/au${item.id}` : undefined"
               group
             >
               <template #coverTopLeft>
@@ -223,10 +233,10 @@ function handleUnfavorite(favoriteResource: FavoriteResource) {
                   rounded="$bew-radius"
                   text="!white xl"
                   bg="black opacity-60 hover:$bew-error-color-80"
-                  @click.stop="handleUnfavorite(item)"
+                  @click.prevent="handleUnfavorite(item)"
                 >
                   <Tooltip :content="$t('favorites.unfavorite')" placement="bottom" type="dark">
-                    <ic-baseline-clear />
+                    <div i-ic-baseline-clear />
                   </Tooltip>
                 </button>
               </template>
@@ -247,7 +257,7 @@ function handleUnfavorite(favoriteResource: FavoriteResource) {
       </template>
     </main>
 
-    <aside relative w="full md:40% lg:30% xl:25%" display="md:block none" order="1 md:2 lg:2">
+    <aside relative w="full md:40% lg:30% xl:25%" class="hidden md:block" order="1 md:2 lg:2">
       <div
         pos="sticky top-120px" flex="~ col gap-4" justify-start my-10 w-full
         h="auto md:[calc(100vh-160px)]" p-6
@@ -257,7 +267,10 @@ function handleUnfavorite(favoriteResource: FavoriteResource) {
           pos="absolute top-0 left-0" w-full h-full bg-cover bg-center
           z--1
         >
-          <div absolute w-full h-full style="backdrop-filter: blur(60px) saturate(180%)" bg="$bew-fill-4" />
+          <div
+            absolute w-full h-full backdrop-blur-40px transform-gpu
+            bg="$bew-fill-4"
+          />
           <img
             v-if="activatedCategoryCover"
             :src="removeHttpFromUrl(`${activatedCategoryCover}@480w_270h_1c`)"
@@ -287,9 +300,9 @@ function handleUnfavorite(favoriteResource: FavoriteResource) {
             @click="handlePlayAll"
           >
             <template #left>
-              <tabler:player-play />
+              <div i-tabler:player-play />
             </template>
-            {{ t('watch_later.play_all') }}
+            {{ t('common.play_all') }}
           </Button>
         </p>
         <ul class="category-list" h-full overflow-overlay border="1 color-[rgba(255,255,255,.2)]" rounded="$bew-radius">

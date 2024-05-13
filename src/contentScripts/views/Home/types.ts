@@ -1,7 +1,4 @@
-export interface HomeTab {
-  label: string
-  value: HomeSubPage
-}
+import type { GridLayout } from '~/logic'
 
 export enum HomeSubPage {
   ForYou = 'ForYou',
@@ -17,4 +14,10 @@ export interface RankingType {
   rid?: number
   seasonType?: number
   type?: string
+}
+
+export interface GridLayoutIcon {
+  icon: string
+  iconActivated: string
+  value: GridLayout
 }

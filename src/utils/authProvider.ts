@@ -1,6 +1,7 @@
 // import browser from 'webextension-polyfill'
-import { appSign } from './appSign'
 import { accessKey } from '~/logic/storage'
+
+import { appSign } from './appSign'
 
 export function revokeAccessKey() {
   accessKey.value = null
@@ -75,12 +76,16 @@ export const TVAppKey = {
 }
 
 // https://github.com/magicdawn/bilibili-app-recommend/blob/e91722cc076fe65b98116fb0248236851ae6e1dc/src/utility/access-key/tv-qrcode/api.ts#L8
-function tvSignSearchParams(params: Record<string, any>) {
+export function tvSignSearchParams(params: Record<string, any>) {
   const sign = appSign(params, TVAppKey.appkey, TVAppKey.appsec)
   return new URLSearchParams({
     ...params,
     sign,
   })
+}
+
+export function getTvSign(params: Record<string, any>) {
+  return appSign(params, TVAppKey.appkey, TVAppKey.appsec)
 }
 
 export function pollTVLoginQRCode(authCode: string): Promise<any> {

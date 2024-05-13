@@ -1,74 +1,50 @@
-import browser from 'webextension-polyfill'
+import type { APIMAP } from '../utils'
+import { AHS } from '../utils'
 
-function handleMessage(message: any) {
-  if (message.contentScriptQuery === 'getTopBarNewMomentsCount') {
-    const url = 'https://api.bilibili.com/x/web-interface/dynamic/entrance'
-    return fetch(url)
-      .then(response => response.json())
-      .then(data => (data))
-      .catch(error => console.error(error))
-  }
+const API_MOMENT = {
+  getTopBarNewMomentsCount: {
+    url: 'https://api.bilibili.com/x/web-interface/dynamic/entrance',
+    _fetch: {
+      method: 'get',
+    },
+    params: {},
+    afterHandle: AHS.J_D,
+  },
+  getTopBarMoments: {
+    url: 'https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/nav',
+    _fetch: {
+      method: 'get',
+    },
+    params: {
+      type: 'video',
+      update_baseline: '',
+      offset: '',
+    },
+    afterHandle: AHS.J_D,
+  },
+  getTopBarLiveMoments: {
+    url: 'https://api.live.bilibili.com/xlive/web-ucenter/v1/xfetter/FeedList',
+    _fetch: {
+      method: 'get',
+    },
+    params: {
+      page: 1,
+      pagesize: 10,
+    },
+    afterHandle: AHS.J_D,
+  },
+  getMoments: {
+    url: 'https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/all',
+    _fetch: {
+      method: 'get',
+    },
+    params: {
+      type: 'all',
+      offset: 0,
+      update_baseline: '',
+    },
+    afterHandle: AHS.J_D,
+  },
+} satisfies APIMAP
 
-  // v2 get moment list
-  // else if (message.contentScriptQuery === 'getTopBarNewMoments') {
-  //   // type: video | article
-  //   const url = `https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/nav?type=${message.type}&update_baseline=${message.updateBaseline}`
-  //   return fetch(url)
-  //     .then(response => response.json())
-  //     .then(data => (data))
-  //     .catch(error => console.error(error))
-  // }
-  // else if (message.contentScriptQuery === 'getTopbarLiveMoments') {
-  //   const url = `https://api.live.bilibili.com/xlive/web-ucenter/v1/xfetter/FeedList?page=${message.page}&pagesize=10`
-  //   return fetch(url)
-  //     .then(response => response.json())
-  //     .then(data => (data))
-  //     .catch(error => console.error(error))
-  // }
-
-  else if (message.contentScriptQuery === 'getTopBarNewMoments') {
-    const url = `https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/dynamic_new?uid=${message.uid}
-    &type_list=${message.typeList}`
-    return fetch(url)
-      .then(response => response.json())
-      .then(data => (data))
-      .catch(error => console.error(error))
-  }
-
-  else if (message.contentScriptQuery === 'getTopbarHistoryMoments') {
-    const url = `https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/dynamic_history?uid=${message.uid}
-    &type_list=${message.typeList}
-    &offset_dynamic_id=${message.offsetDynamicID}`
-    return fetch(url)
-      .then(response => response.json())
-      .then(data => (data))
-      .catch(error => console.error(error))
-  }
-
-  else if (message.contentScriptQuery === 'getTopbarLiveMoments') {
-    const url = `https://api.live.bilibili.com/xlive/web-ucenter/v1/xfetter/FeedList?page=${message.page}&pagesize=${message.pageSize}`
-    return fetch(url)
-      .then(response => response.json())
-      .then(data => (data))
-      .catch(error => console.error(error))
-  }
-
-  // https://socialsisteryi.github.io/bilibili-API-collect/docs/dynamic/all.html#%E8%8E%B7%E5%8F%96%E5%8A%A8%E6%80%81%E5%88%97%E8%A1%A8
-  else if (message.contentScriptQuery === 'getMoments') {
-    const url = `https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/all?timezone_offset=-480&type=${message.type}&offset=${message.offset}&update_baseline=${message.updateBaseline}`
-    return fetch(url)
-      .then(response => response.json())
-      .then(data => (data))
-      .catch(error => console.error(error))
-  }
-}
-
-function handleConnect() {
-  browser.runtime.onMessage.removeListener(handleMessage)
-  browser.runtime.onMessage.addListener(handleMessage)
-}
-
-export function setupMomentMsgLstnr() {
-  browser.runtime.onConnect.removeListener(handleConnect)
-  browser.runtime.onConnect.addListener(handleConnect)
-}
+export default API_MOMENT

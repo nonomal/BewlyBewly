@@ -1,15 +1,20 @@
 <script setup lang="ts">
-import { useI18n } from 'vue-i18n'
-import { Icon } from '@iconify/vue'
-import type { HomeTab } from './types'
-import { HomeSubPage } from './types'
-import emitter from '~/utils/mitt'
-import { settings } from '~/logic'
+import Logo from '~/components/Logo.vue'
+import SearchBar from '~/components/SearchBar/SearchBar.vue'
+import { useBewlyApp } from '~/composables/useAppProvider'
+import { useBewlyImage } from '~/composables/useImage'
+import { homePageGridLayout, settings } from '~/logic'
+import type { HomeTab } from '~/stores/mainStore'
+import { useMainStore } from '~/stores/mainStore'
 import { delay } from '~/utils/main'
+import emitter from '~/utils/mitt'
 
-const { t } = useI18n()
+import type { GridLayoutIcon } from './types'
+import { HomeSubPage } from './types'
 
-const { handleBackToTop } = useBewlyApp()
+const mainStore = useMainStore()
+const { handleBackToTop, scrollbarRef } = useBewlyApp()
+const { getBewlyImage } = useBewlyImage()
 
 const activatedPage = ref<HomeSubPage>(HomeSubPage.ForYou)
 const pages = {
@@ -22,35 +27,38 @@ const pages = {
 const showSearchPageMode = ref<boolean>(false)
 const shouldMoveTabsUp = ref<boolean>(false)
 const tabContentLoading = ref<boolean>(false)
+const currentTabs = ref<HomeTab[]>([])
+const tabPageRef = ref()
 
-const tabs = computed((): HomeTab[] => {
+const gridLayoutIcons = computed((): GridLayoutIcon[] => {
   return [
-    {
-      label: t('home.for_you'),
-      value: HomeSubPage.ForYou,
-    },
-    {
-      label: t('home.following'),
-      value: HomeSubPage.Following,
-    },
-    {
-      label: t('home.subscribed_series'),
-      value: HomeSubPage.SubscribedSeries,
-    },
-    {
-      label: t('home.trending'),
-      value: HomeSubPage.Trending,
-    },
-    {
-      label: t('home.ranking'),
-      value: HomeSubPage.Ranking,
-    },
+    { icon: 'i-f7:square-grid-3x2', iconActivated: 'i-f7:square-grid-3x2-fill', value: 'adaptive' },
+    { icon: 'i-f7:rectangle-grid-2x2', iconActivated: 'i-f7:rectangle-grid-2x2-fill', value: 'twoColumns' },
+    { icon: 'i-f7:rectangle-grid-1x2', iconActivated: 'i-f7:rectangle-grid-1x2-fill', value: 'oneColumn' },
   ]
 })
 
-watch(() => activatedPage.value, () => {
-  handleBackToTop(settings.value.useSearchPageModeOnHomePage ? 510 : 0)
+// use Json stringify to watch the changes of the array item properties
+watch(() => JSON.stringify(settings.value.homePageTabVisibilityList), () => {
+  currentTabs.value = computeTabs()
 })
+
+function computeTabs(): HomeTab[] {
+  // if homePageTabVisibilityList not fresh , set it to default
+  if (!settings.value.homePageTabVisibilityList.length || settings.value.homePageTabVisibilityList.length !== mainStore.homeTabs.length)
+    settings.value.homePageTabVisibilityList = mainStore.homeTabs.map(tab => ({ page: tab.page, visible: true }))
+
+  const targetTabs: HomeTab[] = []
+
+  for (const tab of settings.value.homePageTabVisibilityList) {
+    tab.visible && targetTabs.push({
+      i18nKey: (mainStore.homeTabs.find(defaultTab => defaultTab.page === tab.page) || {})?.i18nKey || tab.page,
+      page: tab.page,
+    })
+  }
+
+  return targetTabs
+}
 
 onMounted(() => {
   showSearchPageMode.value = true
@@ -62,13 +70,29 @@ onMounted(() => {
     // This feature is primarily designed to compatible with the Bilibili Evolved's top bar
     // Even when the BewlyBewly top bar is hidden, the Bilibili Evolved top bar still exists, so not moving up
     if (settings.value.autoHideTopBar && settings.value.showTopBar) {
-      if (val)
-        shouldMoveTabsUp.value = false
+      if (!settings.value.useSearchPageModeOnHomePage) {
+        if (val)
+          shouldMoveTabsUp.value = false
 
-      else
-        shouldMoveTabsUp.value = true
+        else
+          shouldMoveTabsUp.value = true
+      }
+      else {
+        // fix #349
+        const osInstance = scrollbarRef.value?.osInstance()
+        const scrollTop = osInstance.elements().viewport.scrollTop as number
+
+        if (val)
+          shouldMoveTabsUp.value = false
+
+        else if (scrollTop > 510 + 40)
+          shouldMoveTabsUp.value = true
+      }
     }
   })
+
+  currentTabs.value = computeTabs()
+  activatedPage.value = currentTabs.value[0].page
 })
 
 onUnmounted(() => {
@@ -76,17 +100,36 @@ onUnmounted(() => {
 })
 
 function handleChangeTab(tab: HomeTab) {
+  if (activatedPage.value === tab.page) {
+    const osInstance = scrollbarRef.value?.osInstance()
+    const scrollTop = osInstance.elements().viewport.scrollTop as number
+
+    if ((!settings.value.useSearchPageModeOnHomePage && scrollTop > 0) || (settings.value.useSearchPageModeOnHomePage && scrollTop > 510)) {
+      handleBackToTop(settings.value.useSearchPageModeOnHomePage ? 510 : 0)
+    }
+    else {
+      if (tabContentLoading.value)
+        return
+      tabPageRef.value && tabPageRef.value.initData()
+    }
+    return
+  }
+  else {
+    handleBackToTop(settings.value.useSearchPageModeOnHomePage ? 510 : 0)
+  }
+
   // When the content of a tab is loading, prevent switching to another tab.
   // Since `initPageAction()` within the tab replaces the `handleReachBottom` and `handlePageRefresh` functions.
   // Therefore, this will lead to a failure in refreshing the data of the current tab
   // because `handlePageRefresh` and `handleReachBottom` has been replaced
   // now they are set to refresh the data of the tab you switched to
   if (!tabContentLoading.value)
-    activatedPage.value = tab.value
+    activatedPage.value = tab.page
 }
 
 function toggleTabContentLoading(loading: boolean) {
   nextTick(async () => {
+    // Delay the closing effect to prevent the transition effect from being too stiff
     if (!loading)
       await delay(500)
     tabContentLoading.value = loading
@@ -106,7 +149,7 @@ function toggleTabContentLoading(loading: boolean) {
           pos="absolute left-0 top-0" w-full h-inherit bg="cover center" z-1
           pointer-events-none
           :style="{
-            backgroundImage: `url(${settings.searchPageWallpaper})`,
+            backgroundImage: `url('${getBewlyImage(settings.searchPageWallpaper)}')`,
             backgroundAttachment: settings.searchPageModeWallpaperFixed ? 'fixed' : 'unset',
           }"
         />
@@ -156,42 +199,65 @@ function toggleTabContentLoading(loading: boolean) {
       </Transition>
 
       <header
-        pos="sticky top-80px" w-fit z-9 mb-9 duration-300
-        ease-in-out
+        pos="sticky top-80px" w-full z-9 mb-9 duration-300
+        ease-in-out flex="~ justify-between items-start gap-4"
         :class="{ hide: shouldMoveTabsUp }"
       >
-        <ul flex="~ items-center gap-3 wrap">
-          <li
-            v-for="tab in tabs" :key="tab.value"
-            px-4 lh-35px bg="$bew-elevated-1 hover:$bew-elevated-1-hover" backdrop-glass rounded="$bew-radius"
+        <section flex="~ items-center gap-3 wrap">
+          <button
+            v-for="tab in currentTabs" :key="tab.page"
+            :class="{ 'tab-activated': activatedPage === tab.page }"
+            style="backdrop-filter: var(--bew-filter-glass-1)"
+            px-4 lh-35px h-35px bg="$bew-elevated-1 hover:$bew-elevated-1-hover" rounded="$bew-radius"
             cursor-pointer shadow="$bew-shadow-1" box-border border="1 $bew-border-color" duration-300
-            flex="~ gap-2 items-center"
-            :class="{ 'tab-activated': activatedPage === tab.value }"
+            flex="~ gap-2 items-center" relative
             @click="handleChangeTab(tab)"
           >
-            <span class="text-center">{{ tab.label }}</span>
-            <Icon
-              :style="{
-                opacity: activatedPage === tab.value && tabContentLoading ? 1 : 0,
-                margin: activatedPage === tab.value && tabContentLoading ? '0' : '-12px',
-              }"
-              icon="svg-spinners:ring-resize"
-              duration-300 ease-in-out mb--2px text-16px
-            />
-          </li>
-        </ul>
+            <span class="text-center">{{ $t(tab.i18nKey) }}</span>
+
+            <Transition name="fade">
+              <div
+                v-show="activatedPage === tab.page && tabContentLoading"
+                i-svg-spinners:ring-resize
+                pos="absolute right-4px top-4px" duration-300
+                text="8px $bew-text-auto"
+              />
+            </Transition>
+          </button>
+        </section>
+
+        <div
+          style="backdrop-filter: var(--bew-filter-glass-1)"
+          flex="~ gap-1 shrink-0" p-1 h-35px bg="$bew-elevated-1" transform-gpu
+          rounded="$bew-radius" shadow="$bew-shadow-1" box-border border="1 $bew-border-color"
+        >
+          <div
+            v-for="icon in gridLayoutIcons" :key="icon.value"
+            :style="{
+              backgroundColor: homePageGridLayout === icon.value ? 'var(--bew-theme-color-auto)' : '',
+              color: homePageGridLayout === icon.value ? 'var(--bew-text-auto)' : 'unset',
+            }"
+            flex="~ justify-center items-center"
+            w-full
+            h-full p="x-2 y-1" rounded="$bew-radius-half" bg="hover:$bew-fill-2" duration-300
+            cursor-pointer @click="homePageGridLayout = icon.value"
+          >
+            <div :class="homePageGridLayout === icon.value ? icon.iconActivated : icon.icon" text-xl />
+          </div>
+        </div>
       </header>
 
       <Transition name="page-fade">
         <KeepAlive include="ForYou">
           <Component
             :is="pages[activatedPage]" :key="activatedPage"
+            ref="tabPageRef"
+            :grid-layout="homePageGridLayout"
             @before-loading="toggleTabContentLoading(true)"
             @after-loading="toggleTabContentLoading(false)"
           />
         </KeepAlive>
       </Transition>
-      <!-- <RecommendContent :key="recommendContentKey" /> -->
     </main>
   </div>
 </template>
@@ -226,7 +292,7 @@ function toggleTabContentLoading(loading: boolean) {
 }
 
 .tab-activated {
-  --at-apply: bg-$bew-theme-color dark:bg-white color-white dark:color-black
+  --at-apply: bg-$bew-theme-color-auto text-$bew-text-auto
     border-$bew-theme-color dark:border-white;
 }
 </style>

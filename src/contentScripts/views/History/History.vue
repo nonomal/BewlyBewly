@@ -2,14 +2,19 @@
 import { useDateFormat } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 
-import { getCSRF, openLinkToNewTab, removeHttpFromUrl } from '~/utils/main'
+import Button from '~/components/Button.vue'
+import Empty from '~/components/Empty.vue'
+import Progress from '~/components/Progress.vue'
+import { useApiClient } from '~/composables/api'
+import { useBewlyApp } from '~/composables/useAppProvider'
+import type { HistoryResult, List as HistoryItem } from '~/models/history/history'
+import { Business } from '~/models/history/history'
+import type { HistorySearchResult, List as HistorySearchItem } from '~/models/video/historySearch'
 import { calcCurrentTime } from '~/utils/dataFormatter'
-import { Business } from '~/models/video/history'
-import type { List as HistoryItem, HistoryResult } from '~/models/video/history'
-import type { List as HistorySearchItem, HistorySearchResult } from '~/models/video/historySearch'
+import { getCSRF, removeHttpFromUrl } from '~/utils/main'
 
 const { t } = useI18n()
-
+const api = useApiClient()
 const isLoading = ref<boolean>()
 const noMoreContent = ref<boolean>(false)
 const historyList = reactive<Array<HistoryItem>>([])
@@ -55,15 +60,13 @@ function initPageAction() {
  */
 function getHistoryList() {
   isLoading.value = true
-  browser.runtime
-    .sendMessage({
-      contentScriptQuery: 'getHistoryList',
-      type: 'all',
-      viewAt:
+  api.history.getHistoryList({
+    type: 'all',
+    view_at:
         historyList.length > 0
           ? historyList[historyList.length - 1].view_at
           : 0,
-    })
+  })
     .then((res: HistoryResult) => {
       if (res.code === 0) {
         if (Array.isArray(res.data.list) && res.data.list.length > 0)
@@ -83,12 +86,10 @@ function getHistoryList() {
 
 function searchHistoryList() {
   isLoading.value = true
-  browser.runtime
-    .sendMessage({
-      contentScriptQuery: 'searchHistoryList',
-      pn: currentPageNum.value++,
-      keyword: keyword.value,
-    })
+  api.history.searchHistoryList({
+    pn: currentPageNum.value++,
+    keyword: keyword.value,
+  })
     .then((res: HistorySearchResult) => {
       if (res.code === 0) {
         if (historyList.length !== 0 && res.data.list.length < 20) {
@@ -117,12 +118,10 @@ function handleSearch() {
 }
 
 function deleteHistoryItem(index: number, historyItem: HistoryItem) {
-  browser.runtime
-    .sendMessage({
-      contentScriptQuery: 'deleteHistoryItem',
-      kid: `${historyItem.history.business}_${historyItem.history.oid}`,
-      csrf: getCSRF(),
-    })
+  api.history.deleteHistoryItem({
+    kid: `${historyItem.history.business}_${historyItem.history.oid}`,
+    csrf: getCSRF(),
+  })
     .then((res) => {
       if (res.code === 0)
         historyList.splice(index, 1)
@@ -135,20 +134,21 @@ function deleteHistoryItem(index: number, historyItem: HistoryItem) {
  * @return {string} url
  */
 function getHistoryUrl(item: HistoryItem): string {
-  // anime
-  if (item.history.business === 'pgc') {
-    return removeHttpFromUrl(item.uri)
-  }
-  // video
-  else if (item.history.business === Business.ARCHIVE) {
+  if (item.uri)
+    return item.uri
+
+  // Video
+  if (item.history.business === Business.ARCHIVE) {
     if (item?.videos && item.videos > 0)
       return `//www.bilibili.com/video/${item.history.bvid}?p=${item.history.page}`
-    return item.history.bvid
+    return `//www.bilibili.com/video/${item.history.bvid}`
   }
-  else if (item.history.business === 'live') {
+  // Live
+  else if (item.history.business === Business.LIVE) {
     return `//live.bilibili.com/${item.history.oid}`
   }
-  else if (item.history.business === 'article' || item.history.business === 'article-list') {
+  // Article
+  else if (item.history.business === Business.ARTICLE || item.history.business === Business.ARTICLE_LIST) {
     if (item.history.cid === 0)
       return `//www.bilibili.com/read/cv${item.history.oid}`
     else
@@ -167,10 +167,7 @@ function getHistoryItemCover(item: HistoryItem) {
 }
 
 function getHistoryPauseStatus() {
-  browser.runtime
-    .sendMessage({
-      contentScriptQuery: 'getHistoryPauseStatus',
-    })
+  api.history.getHistoryPauseStatus()
     .then((res) => {
       if (res.code === 0)
         historyStatus.value = res.data
@@ -178,12 +175,10 @@ function getHistoryPauseStatus() {
 }
 
 function setHistoryPauseStatus(isPause: boolean) {
-  browser.runtime
-    .sendMessage({
-      contentScriptQuery: 'setHistoryPauseStatus',
-      csrf: getCSRF(),
-      switch: isPause,
-    })
+  api.history.setHistoryPauseStatus({
+    csrf: getCSRF(),
+    switch: isPause,
+  })
     .then((res) => {
       if (res.code === 0)
         getHistoryPauseStatus()
@@ -191,11 +186,9 @@ function setHistoryPauseStatus(isPause: boolean) {
 }
 
 function clearAllHistory() {
-  browser.runtime
-    .sendMessage({
-      contentScriptQuery: 'clearAllHistory',
-      csrf: getCSRF(),
-    })
+  api.history.clearAllHistory({
+    csrf: getCSRF(),
+  })
     .then((res) => {
       if (res.code === 0)
         historyList.length = 0
@@ -241,12 +234,12 @@ function jumpToLoginPage() {
       <TransitionGroup name="list">
         <a
           v-for="(historyItem, index) in historyList"
-          :key="historyItem.kid"
+          :key="historyItem.kid" :href="getHistoryUrl(historyItem)"
+          target="_blank"
           block
           class="group"
           flex
           cursor-pointer
-          @click="openLinkToNewTab(`${getHistoryUrl(historyItem)}`)"
         >
           <!-- time slot -->
           <div
@@ -376,24 +369,22 @@ function jumpToLoginPage() {
             <!-- Description -->
             <div flex justify-between w-full>
               <div flex="~ col">
-                <a :href="`${getHistoryUrl(historyItem)}`" target="_blank" @click.stop="">
+                <a
+                  :href="`${getHistoryUrl(historyItem)}`" target="_blank" rel="noopener noreferrer"
+                  :title="historyItem.show_title ? historyItem.show_title : historyItem.title"
+                >
                   <h3
                     class="keep-two-lines"
                     overflow="hidden"
                     text="lg overflow-ellipsis"
                   >
-                    {{
-                      historyItem.show_title
-                        ? historyItem.show_title
-                        : historyItem.title
-                    }}
+                    {{ historyItem.show_title ? historyItem.show_title : historyItem.title }}
                   </h3>
                 </a>
                 <a
                   un-text="$bew-text-2 sm"
                   m="t-4 b-2"
-                  flex="~"
-                  items-center
+                  flex="~ items-center"
                   cursor-pointer
                   w-fit
                   rounded="$bew-radius"
@@ -401,13 +392,7 @@ function jumpToLoginPage() {
                   hover:bg="$bew-theme-color-10"
                   duration-300
                   pr-2
-                  :href="
-                    historyItem.author_mid
-                      ? `https://space.bilibili.com/${historyItem.author_mid}`
-                      : historyItem.uri
-                  "
-                  target="_blank"
-                  @click.stop=""
+                  :href="historyItem.author_mid ? `https://space.bilibili.com/${historyItem.author_mid}` : historyItem.uri" target="_blank" rel="noopener noreferrer"
                 >
                   <img
                     :src="
@@ -434,7 +419,7 @@ function jumpToLoginPage() {
                     items-center
                     gap-1
                     m="l-2"
-                  ><tabler:live-photo />
+                  ><div i-tabler:live-photo />
                     Live
                   </span>
                 </a>
@@ -452,9 +437,9 @@ function jumpToLoginPage() {
                 opacity-0 group-hover:opacity-100
                 p-2
                 duration-300
-                @click.stop="deleteHistoryItem(index, historyItem)"
+                @click.prevent="deleteHistoryItem(index, historyItem)"
               >
-                <tabler:trash />
+                <div i-tabler:trash />
               </button>
             </div>
           </section>
@@ -496,7 +481,7 @@ function jumpToLoginPage() {
           @click="handleClearAllWatchHistory"
         >
           <template #left>
-            <tabler:trash />
+            <div i-tabler:trash />
           </template>
           {{ $t('history.clear_all_watch_history') }}
         </Button>
@@ -509,7 +494,7 @@ function jumpToLoginPage() {
           @click="handlePauseWatchHistory"
         >
           <template #left>
-            <ph:pause-circle-bold />
+            <div i-ph:pause-circle-bold />
           </template>
           {{ $t('history.pause_watch_history') }}
         </Button>
@@ -522,7 +507,7 @@ function jumpToLoginPage() {
           @click="handleTurnOnWatchHistory"
         >
           <template #left>
-            <ph:play-circle-bold />
+            <div i-ph:play-circle-bold />
           </template>
           {{ $t('history.turn_on_watch_history') }}
         </Button>

@@ -1,13 +1,16 @@
+import 'uno.css'
+import '~/styles'
+
 import { createApp } from 'vue'
 
-import 'uno.css'
-import '~/styles/index.ts'
-import App from './views/App.vue'
-import { setupApp } from '~/logic/common-setup'
-import { SVG_ICONS } from '~/utils/svgIcons'
-import { injectCSS } from '~/utils/main'
+import { useDark } from '~/composables/useDark'
 import { settings } from '~/logic'
+import { setupApp } from '~/logic/common-setup'
 import { runWhenIdle } from '~/utils/lazyLoad'
+import { injectCSS, isHomePage } from '~/utils/main'
+import { SVG_ICONS } from '~/utils/svgIcons'
+
+import App from './views/App.vue'
 
 const isFirefox: boolean = /Firefox/i.test(navigator.userAgent)
 
@@ -27,67 +30,69 @@ const currentUrl = document.URL
 function isSupportedPages() {
   if (
     // homepage
-    /https?:\/\/bilibili.com\/?$/.test(currentUrl)
-    || /https?:\/\/www.bilibili.com\/?$/.test(currentUrl)
-    || /https?:\/\/www.bilibili.com\/index.html$/.test(currentUrl)
-    || /https?:\/\/bilibili.com\/\?spm_id_from=.*/.test(currentUrl)
-    || /https?:\/\/www.bilibili.com\/\?spm_id_from=(.)*/.test(currentUrl)
+    isHomePage()
     // fix #166 https://github.com/hakadao/BewlyBewly/issues/166
-    || /https?:\/\/www.bilibili.com\/\?bvid=.*$/.test(currentUrl)
+    || /https?:\/\/www\.bilibili\.com\/\?bvid=.*$/.test(currentUrl)
 
     // video page
-    || /https?:\/\/(www.)?bilibili.com\/(video|list)\/.*/.test(currentUrl)
+    || /https?:\/\/(www.)?bilibili\.com\/(video|list)\/.*/.test(currentUrl)
     // anime playback & movie page
-    || /https?:\/\/(www.)?bilibili.com\/bangumi\/play\/.*/.test(currentUrl)
+    || /https?:\/\/(www\.)?bilibili\.com\/bangumi\/play\/.*/.test(currentUrl)
     // watch later playlist
-    || /https?:\/\/(www.)?bilibili.com\/list\/watchlater.*/.test(currentUrl)
+    || /https?:\/\/(www\.)?bilibili\.com\/list\/watchlater.*/.test(currentUrl)
     // favorite playlist
-    || /https?:\/\/(www.)?bilibili.com\/list\/ml.*/.test(currentUrl)
+    || /https?:\/\/(www\.)?bilibili\.com\/list\/ml.*/.test(currentUrl)
     // search page
-    || /https?:\/\/search.bilibili.com\.*/.test(currentUrl)
+    || /https?:\/\/search\.bilibili\.com\.*/.test(currentUrl)
     // moments
-    || /https?:\/\/t.bilibili.com\.*/.test(currentUrl)
+    || /https?:\/\/t\.bilibili\.com\.*/.test(currentUrl)
     // moment detail
-    || /https?:\/\/www.bilibili.com\/opus\/.*/.test(currentUrl)
+    || /https?:\/\/(www\.)?bilibili\.com\/opus\/.*/.test(currentUrl)
     // history page
-    || /https?:\/\/(www.)?bilibili.com\/account\/history.*/.test(currentUrl)
+    || /https?:\/\/(www\.)?bilibili\.com\/account\/history.*/.test(currentUrl)
+    // watcher later page
+    || /https?:\/\/(www\.)?bilibili\.com\/watchlater\/#\/list.*/.test(currentUrl)
     // user space page
-    || /https?:\/\/space.bilibili.com\.*/.test(currentUrl)
+    || /https?:\/\/space\.bilibili\.com\.*/.test(currentUrl)
     // notifications page
-    || /https?:\/\/message.bilibili.com\.*/.test(currentUrl)
+    || /https?:\/\/message\.bilibili\.com\.*/.test(currentUrl)
     // bilibili channel page b站分区页面
-    || /https?:\/\/www.bilibili.com\/v\/(?!popular).*/.test(currentUrl)
+    || /https?:\/\/(www\.)?bilibili\.com\/v\/(?!popular).*/.test(currentUrl)
     // anime page & chinese anime page
-    || /https?:\/\/www.bilibili.com\/(anime|guochuang).*/.test(currentUrl)
+    || /https?:\/\/(www\.)?bilibili\.com\/(anime|guochuang).*/.test(currentUrl)
     // channel page e.g. tv shows, movie, variety shows, mooc page
-    || /https?:\/\/(www.)?bilibili.com\/(tv|movie|variety|mooc|documentary).*/.test(currentUrl)
+    || /https?:\/\/(www\.)?bilibili\.com\/(tv|movie|variety|mooc|documentary).*/.test(currentUrl)
     // article page
-    || /https?:\/\/(www.)?bilibili.com\/(read).*/.test(currentUrl)
+    || /https?:\/\/(www\.)?bilibili\.com\/(read).*/.test(currentUrl)
+    // 404 page
+    || /^https?:\/\/(www\.)?bilibili\.com\/404.*$/.test(currentUrl)
   )
     return true
   else
     return false
 }
 
-let beforeLoadedStyleEl: HTMLStyleElement
+let beforeLoadedStyleEl: HTMLStyleElement | undefined
 
-// Since using runWhenIdle does not instantly inject the app to the page, a style class cannot be injected immediately to the <html> tag
-// We have to manually add a class to the <html> app to ensure that the transition effect is applied
-if (
-  (settings.value.adaptToOtherPageStyles && settings.value.theme === 'dark')
-  || (settings.value.adaptToOtherPageStyles && settings.value.theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
-)
-  document.documentElement.classList.add('bewly-design', 'dark')
+if (isSupportedPages()) {
+  if (settings.value.adaptToOtherPageStyles)
+    useDark()
 
-if (settings.value.adaptToOtherPageStyles && isSupportedPages()) {
+  if (settings.value.adaptToOtherPageStyles)
+    document.documentElement.classList.add('bewly-design')
+  else
+    document.documentElement.classList.remove('bewly-design')
+}
+
+if (settings.value.adaptToOtherPageStyles && isHomePage()) {
   beforeLoadedStyleEl = injectCSS(`
-    html.dark.bewly-design {
-      background-color: hsl(230 12% 6%);
+    html.bewly-design {
+      background-color: var(--bew-bg);
+      transition: background-color 0.2s ease-in;
     }
 
     body {
-      opacity: 0;
-      background: none;
+      display: none;
     }
   `)
 
@@ -99,46 +104,39 @@ if (settings.value.adaptToOtherPageStyles && isSupportedPages()) {
   `)
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  if (isSupportedPages()) {
-    // Remove the original Bilibili homepage if in Bilibili homepage & useOriginalBilibiliHomepage is enabled
-    if (
-      !settings.value.useOriginalBilibiliHomepage
-      && (
-        /https?:\/\/bilibili.com\/?$/.test(currentUrl)
-        || /https?:\/\/www.bilibili.com\/?$/.test(currentUrl)
-        || /https?:\/\/www.bilibili.com\/index.html$/.test(currentUrl)
-        || /https?:\/\/bilibili.com\/\?spm_id_from=.*/.test(currentUrl)
-        || /https?:\/\/www.bilibili.com\/\?spm_id_from=(.)*/.test(currentUrl)
-      )
-    ) {
-      const originalPageContent = document.querySelector('#i_cecream')
-      if (originalPageContent)
-        originalPageContent.innerHTML = ''
+if (isSupportedPages()) {
+  // remove the original top bar
+  injectCSS(`
+    .bili-header .bili-header__bar,
+    #internationalHeader,
+    .link-navbar,
+    #home_nav {
+      visibility: hidden;
     }
+  `)
+}
 
-    // document.documentElement.removeChild(beforeLoadedStyleEl)
+document.addEventListener('DOMContentLoaded', () => {
+  // Remove the original Bilibili homepage if in Bilibili homepage & useOriginalBilibiliHomepage is enabled
+  if (!settings.value.useOriginalBilibiliHomepage && isHomePage()) {
+    // const originalPageContent = document.querySelector('#i_cecream')
+    // if (originalPageContent)
+    //   originalPageContent.innerHTML = ''
+    document.body.innerHTML = ''
+  }
+  if (beforeLoadedStyleEl)
+    document.documentElement.removeChild(beforeLoadedStyleEl)
+
+  if (isSupportedPages()) {
     // Then inject the app
     injectApp()
   }
 })
 
 function injectApp() {
-  // Inject style first
-  const newStyleEl = document.createElement('link')
-  newStyleEl.setAttribute('rel', 'stylesheet')
-  newStyleEl.setAttribute('href', browser.runtime.getURL('dist/contentScripts/style.css'))
-  document.documentElement.appendChild(newStyleEl)
-  newStyleEl.onload = async () => {
-    // To prevent abrupt style transitions caused by sudden style changes
-    setTimeout(() => {
-      document.documentElement.removeChild(beforeLoadedStyleEl)
-    }, 500)
-  }
-
   // Inject app when idle
   runWhenIdle(async () => {
-    // mount component to context window
+  // mount component to context window
     const container = document.createElement('div')
     container.id = 'bewly'
     const root = document.createElement('div')
@@ -153,7 +151,7 @@ function injectApp() {
     container.style.opacity = '0'
     container.style.transition = 'opacity 0.5s'
     styleEl.onload = () => {
-      // To prevent abrupt style transitions caused by sudden style changes
+    // To prevent abrupt style transitions caused by sudden style changes
       setTimeout(() => {
         container.style.opacity = '1'
       }, 500)
@@ -167,7 +165,7 @@ function injectApp() {
     document.body.appendChild(container)
 
     const app = createApp(App)
-    await setupApp(app)
+    setupApp(app)
     app.mount(root)
   })
 }

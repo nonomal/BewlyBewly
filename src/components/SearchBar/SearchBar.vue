@@ -1,6 +1,10 @@
-<!-- TODO: refactor all that code -->
 <script setup lang="ts">
-import { Icon } from '@iconify/vue'
+import { onKeyStroke } from '@vueuse/core'
+
+import { useApiClient } from '~/composables/api'
+import { useBewlyImage } from '~/composables/useImage'
+import { findLeafActiveElement } from '~/utils/element'
+
 import type { HistoryItem, SuggestionItem, SuggestionResponse } from './searchHistoryProvider'
 import {
   addSearchHistory,
@@ -15,6 +19,9 @@ defineProps<{
   focusedCharacter?: string
 }>()
 
+const { getBewlyImage } = useBewlyImage()
+const api = useApiClient()
+const keywordRef = ref<HTMLInputElement>()
 const isFocus = ref<boolean>(false)
 const keyword = ref<string>('')
 const suggestions = reactive<SuggestionItem[]>([])
@@ -29,14 +36,34 @@ watch(isFocus, async (focus) => {
     searchHistory.value = await getSearchHistory()
 })
 
+onKeyStroke('/', (e: KeyboardEvent) => {
+  // Reference: https://github.com/polywock/globalSpeed/blob/3705ac836402b324550caf92aa65075b2f2347c6/src/contentScript/ConfigSync.ts#L94
+  const target = e.target as HTMLElement
+  const ignoreTagNames = ['INPUT', 'TEXTAREA']
+  if (target && (ignoreTagNames.includes(target.tagName) || target.isContentEditable))
+    return
+
+  const activeElement = findLeafActiveElement(document) as HTMLElement | undefined
+  if (activeElement && target !== activeElement) {
+    if (ignoreTagNames.includes(activeElement.tagName) || activeElement.isContentEditable)
+      return
+  }
+
+  e.preventDefault()
+  keywordRef.value?.focus()
+})
+onKeyStroke('Escape', (e: KeyboardEvent) => {
+  e.preventDefault()
+  keywordRef.value?.blur()
+  isFocus.value = false
+}, { target: keywordRef })
+
 function handleInput() {
   selectedIndex.value = -1
-  if (keyword.value.length > 0) {
-    browser.runtime
-      .sendMessage({
-        contentScriptQuery: 'getSearchSuggestion',
-        term: keyword.value,
-      })
+  if (keyword.value.trim().length > 0) {
+    api.search.getSearchSuggestion({
+      term: keyword.value,
+    })
       .then((res: SuggestionResponse) => {
         if (!res || (res && res.code !== 0))
           return
@@ -50,7 +77,7 @@ function handleInput() {
 
 async function navigateToSearchResultPage(keyword: string) {
   if (keyword) {
-    window.open(`//search.bilibili.com/all?keyword=${keyword}`, '_blank')
+    window.open(`//search.bilibili.com/all?keyword=${encodeURIComponent(keyword)}`, '_blank')
     const searchItem = {
       value: keyword,
       timestamp: Number(new Date()),
@@ -129,6 +156,13 @@ function handleKeyDown() {
   })
 }
 
+function handleKeyEnter(e: KeyboardEvent) {
+  if (!e.shiftKey && e.key === 'Enter' && !e.isComposing) {
+    e.preventDefault()
+    navigateToSearchResultPage(keyword.value)
+  }
+}
+
 async function handleClearSearchHistory() {
   await clearAllSearchHistory()
   searchHistory.value = []
@@ -136,7 +170,7 @@ async function handleClearSearchHistory() {
 </script>
 
 <template>
-  <div id="search-wrap" w="full" max-w="550px" m="x-8" pos="relative">
+  <div id="search-wrap" w="full" max-w="550px" pos="relative">
     <div
       v-if="!darkenOnFocus && isFocus"
       pos="fixed top-0 left-0"
@@ -155,17 +189,21 @@ async function handleClearSearchHistory() {
     <div
       v-if="blurredOnFocus"
       pos="fixed top-0 left-0" w-full h-full duration-500 pointer-events-none
-      ease-out
+      ease-out transform-gpu
       :style="{ backdropFilter: isFocus ? 'blur(15px)' : 'blur(0)' }"
     />
 
     <div class="search-bar group" :class="isFocus ? 'focus' : ''" flex="~" items-center pos="relative">
       <Transition name="focus-character">
-        <img v-show="focusedCharacter && isFocus" :src="focusedCharacter" width="100" object-contain pos="absolute right-0 bottom-40px">
+        <img
+          v-show="focusedCharacter && isFocus" :src="getBewlyImage(focusedCharacter || '')"
+          width="100" object-contain pos="absolute right-0 bottom-40px"
+        >
       </Transition>
 
       <input
-        v-model.trim="keyword"
+        ref="keywordRef"
+        v-model="keyword"
         rounded="60px focus:$bew-radius"
         p="l-6 r-18 y-3"
         h-50px
@@ -176,7 +214,7 @@ async function handleClearSearchHistory() {
         type="text"
         @focus="isFocus = true"
         @input="handleInput"
-        @keyup.enter.stop.passive="navigateToSearchResultPage(keyword)"
+        @keydown.enter.stop.passive="handleKeyEnter"
         @keyup.up.stop.passive="handleKeyUp"
         @keyup.down.stop.passive="handleKeyDown"
         @keydown.stop="() => {}"
@@ -188,7 +226,7 @@ async function handleClearSearchHistory() {
         flex="~ items-center justify-between"
         @click="keyword = ''"
       >
-        <ic-baseline-clear shrink-0 />
+        <div i-ic-baseline-clear shrink-0 />
       </button>
 
       <button
@@ -204,7 +242,7 @@ async function handleClearSearchHistory() {
         style="--un-drop-shadow: drop-shadow(0 0 6px var(--bew-theme-color))"
         @click="navigateToSearchResultPage(keyword)"
       >
-        <tabler:search block align-middle />
+        <div i-tabler:search block align-middle />
       </button>
     </div>
 
@@ -239,7 +277,7 @@ async function handleClearSearchHistory() {
                 pos="absolute top-0 right-0" scale-80 opacity-0 group-hover:opacity-100
                 @click.stop="handleDelete(item.value)"
               >
-                <ic-baseline-clear />
+                <div i-ic-baseline-clear />
               </button>
             </div>
           </div>
@@ -313,8 +351,8 @@ async function handleClearSearchHistory() {
 
   @mixin card-content {
     --at-apply: text-base outline-none w-full
-      bg-$b-search-bar-color shadow-$bew-shadow-2;
-    backdrop-filter: var(--bew-filter-glass);
+      bg-$b-search-bar-color shadow-$bew-shadow-2 transform-gpu;
+    backdrop-filter: var(--bew-filter-glass-1);
   }
 
   .search-bar {

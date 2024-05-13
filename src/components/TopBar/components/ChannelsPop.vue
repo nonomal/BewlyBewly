@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
+
 import { isHomePage } from '~/utils/main'
 
 const { t } = useI18n()
 
-const genres = [
+const genres = computed(() => [
   { name: t('topbar.logo_dropdown.anime'), icon: '#channel-anime', href: 'https://www.bilibili.com/anime' },
   { name: t('topbar.logo_dropdown.movies'), icon: '#channel-movie', href: 'https://www.bilibili.com/movie' },
   { name: t('topbar.logo_dropdown.chinese_anime'), icon: '#channel-guochuang', href: 'https://www.bilibili.com/guochuang' },
@@ -39,12 +40,13 @@ const genres = [
   { name: t('topbar.logo_dropdown.paid_courses'), icon: '#channel-zhishi', href: 'https://www.bilibili.com/cheese' },
   { name: t('topbar.logo_dropdown.community'), icon: '#channel-blackroom', href: 'https://www.bilibili.com/blackboard/activity-5zJxM3spoS.html' },
   { name: t('topbar.logo_dropdown.music_plus'), icon: '#channel-musicplus', href: 'https://www.bilibili.com/v/musicplus' },
-]
+])
 </script>
 
 <template>
   <div
-    backdrop-glass shadow="$bew-shadow-3"
+    style="backdrop-filter: var(--bew-filter-glass-1);"
+    shadow="$bew-shadow-3"
     flex="~"
     p="4"
     bg="$bew-elevated-1"

@@ -1,10 +1,24 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import type { RankingType } from '../types'
-import type { RankingResult, List as RankingVideoItem } from '~/models/video/ranking'
-import type { List as RankingPgcItem, RankingPgcResult } from '~/models/video/rankingPgc'
+
+import LongCoverCard from '~/components/LongCoverCard/LongCoverCard.vue'
+import LongCoverCardSkeleton from '~/components/LongCoverCard/LongCoverCardSkeleton.vue'
+import OverlayScrollbarsComponent from '~/components/OverlayScrollbarsComponent'
+import VideoCard from '~/components/VideoCard/VideoCard.vue'
+import VideoCardSkeleton from '~/components/VideoCard/VideoCardSkeleton.vue'
+import { useApiClient } from '~/composables/api'
+import { useBewlyApp } from '~/composables/useAppProvider'
+import type { GridLayout } from '~/logic'
 import { settings } from '~/logic'
+import type { List as RankingVideoItem, RankingResult } from '~/models/video/ranking'
+import type { List as RankingPgcItem, RankingPgcResult } from '~/models/video/rankingPgc'
 import emitter from '~/utils/mitt'
+
+import type { RankingType } from '../types'
+
+const props = defineProps<{
+  gridLayout: GridLayout
+}>()
 
 const emit = defineEmits<{
   (e: 'beforeLoading'): void
@@ -12,7 +26,22 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const api = useApiClient()
 const { handleBackToTop, handlePageRefresh } = useBewlyApp()
+
+const gridValue = computed((): string => {
+  if (props.gridLayout === 'adaptive') {
+    // eslint-disable-next-line ts/no-use-before-define
+    if (!activatedRankingType.value.seasonType)
+      return '~ 2xl:cols-4 xl:cols-3 lg:cols-2 md:cols-1 gap-5'
+    else
+      return '~ 2xl:cols-5 xl:cols-4 lg:cols-3 md:cols-2 gap-5'
+  }
+
+  if (props.gridLayout === 'twoColumns')
+    return '~ cols-1 xl:cols-2 gap-4'
+  return '~ cols-1 gap-4'
+})
 
 const rankingTypes = computed((): RankingType[] => {
   return [
@@ -53,10 +82,7 @@ const shouldMoveAsideUp = ref<boolean>(false)
 watch(() => activatedRankingType.value.id, () => {
   handleBackToTop(settings.value.useSearchPageModeOnHomePage ? 510 : 0)
 
-  if ('seasonType' in activatedRankingType.value)
-    getRankingPgc()
-  else
-    getRankingVideos()
+  initData()
 })
 
 onMounted(() => {
@@ -75,7 +101,7 @@ onMounted(() => {
     }
   })
 
-  getRankingVideos()
+  initData()
   initPageAction()
 })
 
@@ -85,12 +111,23 @@ onActivated(() => {
 
 function initPageAction() {
   handlePageRefresh.value = async () => {
-    videoList.length = 0
-    PgcList.length = 0
     if (isLoading.value)
       return
-    getRankingVideos()
+    initData()
   }
+}
+
+function initData() {
+  videoList.length = 0
+  PgcList.length = 0
+  getData()
+}
+
+function getData() {
+  if ('seasonType' in activatedRankingType.value)
+    getRankingPgc()
+  else
+    getRankingVideos()
 }
 
 onBeforeUnmount(() => {
@@ -101,8 +138,7 @@ function getRankingVideos() {
   videoList.length = 0
   emit('beforeLoading')
   isLoading.value = true
-  browser.runtime.sendMessage({
-    contentScriptQuery: 'getRankingVideos',
+  api.ranking.getRankingVideos({
     rid: activatedRankingType.value.rid,
     type: 'type' in activatedRankingType.value ? activatedRankingType.value.type : 'all',
   }).then((response: RankingResult) => {
@@ -119,14 +155,15 @@ function getRankingVideos() {
 function getRankingPgc() {
   PgcList.length = 0
   isLoading.value = true
-  browser.runtime.sendMessage({
-    contentScriptQuery: 'getRankingPgc',
-    seasonType: activatedRankingType.value.seasonType,
+  api.ranking.getRankingPgc({
+    season_type: activatedRankingType.value.seasonType,
   }).then((response: RankingPgcResult) => {
     if (response.code === 0)
-      Object.assign(PgcList, response.result.list)
+      Object.assign(PgcList, response.data.list)
   }).finally(() => isLoading.value = false)
 }
+
+defineExpose({ initData })
 </script>
 
 <template>
@@ -140,10 +177,10 @@ function getRankingPgc() {
         <ul flex="~ col gap-2">
           <li v-for="rankingType in rankingTypes" :key="rankingType.id">
             <a
+              :class="{ active: activatedRankingType.id === rankingType.id }"
               px-4 lh-30px h-30px hover:bg="$bew-fill-2" w-inherit
               block rounded="$bew-radius" cursor-pointer transition="all 300 ease-out"
-              hover:scale-105 un-text="$bew-text-2 hover:$bew-text-1"
-              :class="{ active: activatedRankingType.id === rankingType.id }"
+              hover:scale-105 un-text="$bew-text-1"
               @click="activatedRankingType = rankingType"
             >{{ rankingType.name }}</a>
           </li>
@@ -151,7 +188,13 @@ function getRankingPgc() {
       </OverlayScrollbarsComponent>
     </aside>
 
-    <main w-full>
+    <!-- By directly using predefined unocss grid properties, it is possible to dynamically set the grid attribute -->
+    <div hidden grid="~ 2xl:cols-5 xl:cols-4 lg:cols-3 md:cols-2 gap-5" />
+    <div hidden grid="~ 2xl:cols-4 xl:cols-3 lg:cols-2 md:cols-1 gap-5" />
+    <div hidden grid="~ cols-1 xl:cols-2 gap-4" />
+    <div hidden grid="~ cols-1 gap-4" />
+
+    <main w-full :grid="gridValue">
       <template v-if="!('seasonType' in activatedRankingType)">
         <VideoCard
           v-for="(video, index) in videoList"
@@ -171,38 +214,41 @@ function getRankingPgc() {
           :rank="index + 1"
           :cid="video.cid"
           show-preview
-          horizontal
+          :horizontal="gridLayout !== 'adaptive'"
+
           w-full
         />
       </template>
       <template v-else>
-        <div grid="~ cols-2 gap-4">
-          <LongCoverCard
-            v-for="pgc in PgcList"
-            :key="pgc.url"
-            :url="pgc.url"
-            :cover="pgc.cover"
-            :title="pgc.title"
-            :desc="pgc.new_ep.index_show"
-            :view="pgc.stat.view"
-            :follow="pgc.stat.follow"
-            :rank="pgc.rank"
-            :capsule-text="pgc.rating.replace('分', '')"
-            horizontal
-            mb-8
-          />
-        </div>
+        <LongCoverCard
+          v-for="pgc in PgcList"
+          :key="pgc.url"
+          :url="pgc.url"
+          :cover="pgc.cover"
+          :title="pgc.title"
+          :desc="pgc.new_ep.index_show"
+          :view="pgc.stat.view"
+          :follow="pgc.stat.follow"
+          :rank="pgc.rank"
+          :capsule-text="pgc.rating.replace('分', '')"
+          :horizontal="gridLayout !== 'adaptive'"
+          mb-8
+        />
       </template>
 
       <!-- skeleton -->
       <template v-if="isLoading">
         <template v-if="!('seasonType' in activatedRankingType)">
-          <VideoCardSkeleton v-for="item in 30" :key="item" horizontal />
+          <VideoCardSkeleton
+            v-for="item in 30" :key="item"
+            :horizontal="gridLayout !== 'adaptive'"
+          />
         </template>
         <template v-else>
-          <div grid="~ cols-2 gap-4">
-            <LongCoverCardSkeleton v-for="item in 30" :key="item" horizontal />
-          </div>
+          <LongCoverCardSkeleton
+            v-for="item in 30" :key="item"
+            :horizontal="gridLayout !== 'adaptive'"
+          />
         </template>
       </template>
     </main>
@@ -211,7 +257,7 @@ function getRankingPgc() {
 
 <style lang="scss" scoped>
 .active {
-  --at-apply: scale-110 bg-$bew-theme-color dark:bg-white text-white dark:text-black shadow-$bew-shadow-2;
+  --at-apply: scale-110 bg-$bew-theme-color-auto text-$bew-text-auto shadow-$bew-shadow-2;
 }
 
 .hide {

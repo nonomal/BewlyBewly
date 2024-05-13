@@ -1,14 +1,23 @@
 <script setup lang="ts">
-import { useThrottleFn, useToggle } from '@vueuse/core'
+import { useDebounceFn, useThrottleFn, useToggle } from '@vueuse/core'
+import type { Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import browser from 'webextension-polyfill'
-import type { Ref } from 'vue'
 
-import { accessKey, settings } from '~/logic'
-import { AppPage, LanguageType } from '~/enums/appEnums'
-import { getUserID, hexToRGBA, isHomePage, smoothScrollToTop } from '~/utils/main'
+import AppBackground from '~/components/AppBackground.vue'
+import BackToTopAndRefreshButtons from '~/components/BackToTopAndRefreshButtons.vue'
+import Dock from '~/components/Dock/Dock.vue'
+import OverlayScrollbarsComponent from '~/components/OverlayScrollbarsComponent'
+import RightSideButtons from '~/components/RightSideButtons/RightSideButtons.vue'
+import Settings from '~/components/Settings/Settings.vue'
+import TopBar from '~/components/TopBar/TopBar.vue'
 import type { BewlyAppProvider } from '~/composables/useAppProvider'
+import { useDark } from '~/composables/useDark'
+import { AppPage, LanguageType } from '~/enums/appEnums'
+import { accessKey, settings } from '~/logic'
+import { getUserID, hexToRGBA, isHomePage, smoothScrollToTop } from '~/utils/main'
 
+const { isDark } = useDark()
 const activatedPage = ref<AppPage>(settings.value.dockItemVisibilityList.find(e => e.visible === true)?.page ?? AppPage.Home)
 const { locale } = useI18n()
 const [showSettings, toggleSettings] = useToggle(false)
@@ -44,8 +53,6 @@ const isSearchPage = computed(() => {
 const isTopBarFixed = computed(() => {
   if (
     isHomePage()
-    // // search page
-    // || /https?:\/\/search.bilibili.com\/.*$/.test(location.href)
     // video page
     || /https?:\/\/(www.)?bilibili.com\/(video|list)\/.*/.test(location.href)
     // anime playback & movie page
@@ -74,13 +81,8 @@ watch(
   () => {
     setAppThemeColor()
   },
+  { immediate: true },
 )
-
-// Watch for changes in the 'settings.value.theme' variable and add the 'dark' class to the 'mainApp' element
-// to prevent some Unocss dark-specific styles from failing to take effect
-watch(() => settings.value.theme, () => {
-  setAppAppearance()
-})
 
 watch(() => settings.value.language, () => {
   setAppLanguage()
@@ -92,6 +94,24 @@ watch(() => accessKey.value, () => {
 
 watch(() => settings.value.adaptToOtherPageStyles, () => {
   handleAdaptToOtherPageStylesChange()
+}, { immediate: true })
+
+watch(() => settings.value.blockAds, () => {
+  handleBlockAds()
+})
+
+watch(() => settings.value.disableFrostedGlass, () => {
+  handleDisableFrostedGlass()
+})
+
+watch(() => settings.value.reduceFrostedGlassBlur, () => {
+  handleReduceFrostedGlassBlur()
+})
+
+onBeforeMount(() => {
+  handleBlockAds()
+  handleDisableFrostedGlass()
+  handleReduceFrostedGlassBlur()
 })
 
 onMounted(() => {
@@ -101,7 +121,7 @@ onMounted(() => {
     // Force overwrite Bilibili Evolved body tag & html tag background color
     document.body.style.setProperty('background-color', 'unset', 'important')
   }
-  document.documentElement.style.setProperty('font-size', '14px')
+  // document.documentElement.style.setProperty('font-size', '14px')
 
   document.addEventListener('scroll', () => {
     if (window.scrollY > 0)
@@ -109,13 +129,8 @@ onMounted(() => {
     else showTopBarMask.value = false
   })
 
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', setAppAppearance)
-
   handleChangeAccessKey()
-  setAppAppearance()
   setAppLanguage()
-  setAppThemeColor()
-  handleAdaptToOtherPageStylesChange()
 })
 
 function handleChangeAccessKey() {
@@ -162,37 +177,6 @@ async function setAppLanguage() {
   locale.value = settings.value.language
 }
 
-/**
- * Watch for changes in the 'settings.value.theme' variable and add the 'dark' class to the 'mainApp' element
- * to prevent some Unocss dark-specific styles from failing to take effect
- */
-function setAppAppearance() {
-  const currentColorScheme = window.matchMedia('(prefers-color-scheme: dark)').matches
-
-  if (settings.value.theme === 'dark') {
-    mainAppRef.value?.classList.add('dark')
-    document.querySelector('#bewly')?.classList.add('dark')
-    document.documentElement.classList.add('dark')
-  }
-  else if (settings.value.theme === 'light') {
-    mainAppRef.value?.classList.remove('dark')
-    document.querySelector('#bewly')?.classList.remove('dark')
-    document.documentElement.classList.remove('dark')
-  }
-  else if (settings.value.theme === 'auto') {
-    if (currentColorScheme) {
-      mainAppRef.value?.classList.add('dark')
-      document.querySelector('#bewly')?.classList.add('dark')
-      document.documentElement.classList.add('dark')
-    }
-    else {
-      mainAppRef.value?.classList.remove('dark')
-      document.querySelector('#bewly')?.classList.remove('dark')
-      document.documentElement.classList.remove('dark')
-    }
-  }
-}
-
 function setAppThemeColor() {
   const bewlyElement = document.querySelector('#bewly') as HTMLElement
   if (bewlyElement) {
@@ -220,7 +204,7 @@ function handleAdaptToOtherPageStylesChange() {
     document.documentElement.classList.remove('bewly-design')
 }
 
-function handleOsScroll() {
+const handleOsScroll = useDebounceFn(() => {
   const osInstance = scrollbarRef.value?.osInstance()
   const { viewport } = osInstance.elements()
   const { scrollTop, scrollHeight, clientHeight } = viewport // get scroll offset
@@ -230,11 +214,54 @@ function handleOsScroll() {
   else
     showTopBarMask.value = true
 
-  if (clientHeight + scrollTop >= scrollHeight - 20)
+  if (clientHeight + scrollTop >= scrollHeight - 150)
     handleThrottledReachBottom()
 
   if (isHomePage())
     topBarRef.value?.handleScroll()
+}, 50)
+
+function handleBlockAds() {
+  // Do not use the "ads" keyword. AdGuard, AdBlock, and some ad-blocking extensions will
+  // detect and remove it when the class name contains "ads"
+  if (settings.value.blockAds)
+    document.documentElement.classList.add('block-useless-contents')
+  else
+    document.documentElement.classList.remove('block-useless-contents')
+}
+
+function handleDisableFrostedGlass() {
+  const bewlyElement = document.querySelector('#bewly') as HTMLElement
+  if (settings.value.disableFrostedGlass) {
+    if (bewlyElement)
+      bewlyElement.classList.add('disable-frosted-glass')
+
+    document.documentElement.classList.add('disable-frosted-glass')
+
+    settings.value.reduceFrostedGlassBlur = false
+  }
+  else {
+    if (bewlyElement)
+      bewlyElement.classList.remove('disable-frosted-glass')
+
+    document.documentElement.classList.remove('disable-frosted-glass')
+  }
+}
+
+function handleReduceFrostedGlassBlur() {
+  const bewlyElement = document.querySelector('#bewly') as HTMLElement
+  if (settings.value.reduceFrostedGlassBlur) {
+    if (bewlyElement)
+      bewlyElement.classList.add('reduce-frosted-glass-blur')
+
+    document.documentElement.classList.add('reduce-frosted-glass-blur')
+  }
+  else {
+    if (bewlyElement)
+      bewlyElement.classList.remove('reduce-frosted-glass-blur')
+
+    document.documentElement.classList.remove('reduce-frosted-glass-blur')
+  }
 }
 
 // fix #166 https://github.com/hakadao/BewlyBewly/issues/166
@@ -262,7 +289,7 @@ provide<BewlyAppProvider>('BEWLY_APP', {
 </script>
 
 <template>
-  <div ref="mainAppRef" class="bewly-wrapper" text="$bew-text-1">
+  <div id="bewly-wrapper" ref="mainAppRef" class="bewly-wrapper" :class="{ dark: isDark }" text="$bew-text-1">
     <!-- Background -->
     <template v-if="isHomePage() && !settings.useOriginalBilibiliHomepage">
       <AppBackground :activated-page="activatedPage" />
@@ -308,9 +335,12 @@ provide<BewlyAppProvider>('BEWLY_APP', {
               || activatedPage !== AppPage.Home && activatedPage !== AppPage.Search
             )
             || settings.useOriginalBilibiliHomepage"
-          :show-logo="showTopBarMask && settings.useSearchPageModeOnHomePage
-            || (!settings.useSearchPageModeOnHomePage || activatedPage !== AppPage.Home)
-            || settings.useOriginalBilibiliHomepage"
+          :show-logo="settings.alwaysShowTheTopBarLogoOnSearchPageMode
+            || (
+              showTopBarMask && settings.useSearchPageModeOnHomePage
+              || (!settings.useSearchPageModeOnHomePage || activatedPage !== AppPage.Home)
+              || settings.useOriginalBilibiliHomepage
+            )"
           :mask="showTopBarMask"
           pos="fixed top-0 left-0" z="99 hover:1001" w-full
         />
@@ -355,5 +385,9 @@ provide<BewlyAppProvider>('BEWLY_APP', {
 .top-bar-enter-from,
 .top-bar-leave-to {
   --at-apply: opacity-0 transform -translate-y-full;
+}
+
+.bewly-wrapper {
+  --at-apply: text-size-$bew-base-font-size;
 }
 </style>

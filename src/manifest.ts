@@ -1,5 +1,6 @@
 import fs from 'fs-extra'
 import type { Manifest } from 'webextension-polyfill'
+
 import type PkgType from '../package.json'
 import { isDev, isFirefox, port, r } from '../scripts/utils'
 
@@ -23,8 +24,8 @@ export async function getManifest() {
     //   open_in_tab: true,
     // },
     background: isFirefox
-      ? { scripts: ['./dist/background/index.mjs'] }
-      : { service_worker: './dist/background/index.mjs' },
+      ? { scripts: ['./dist/background/index.js'] }
+      : { service_worker: './dist/background/index.js' },
     icons: {
       16: './assets/icon-512.png',
       48: './assets/icon-512.png',
@@ -35,6 +36,9 @@ export async function getManifest() {
       'storage',
       'scripting',
       'declarativeNetRequest',
+      ...isFirefox
+        ? ['webRequest', 'webRequestBlocking']
+        : [],
     ],
     host_permissions: [
       '*://*.bilibili.com/*',
@@ -45,6 +49,7 @@ export async function getManifest() {
       {
         matches: ['*://www.bilibili.com/*', '*://search.bilibili.com/*', '*://t.bilibili.com/*', '*://space.bilibili.com/*', '*://message.bilibili.com/*'],
         js: ['./dist/contentScripts/index.global.js'],
+        css: ['./dist/contentScripts/style.css'],
         run_at: 'document_start',
         match_about_blank: true,
       },
@@ -66,18 +71,31 @@ export async function getManifest() {
             ? `script-src 'self' http://localhost:${port}; object-src 'self' http://localhost:${port}`
             : 'script-src \'self\'; object-src \'self\'',
         },
-    // @ts-expect-error Manifest.WebExtensionManifest type doesn't not support declarative_net_request check
-    declarative_net_request: {
-      rule_resources: [{
-        id: 'ruleset_1',
-        enabled: true,
-        path: 'assets/rules.json',
-      }],
-    },
+    ...isFirefox
+      ? {}
+      : {
+          declarative_net_request: {
+            rule_resources: [
+              {
+                id: 'ruleset_1',
+                enabled: true,
+                path: 'assets/rules.json',
+              },
+            ],
+          },
+        },
   }
 
   if (isDev)
     manifest.permissions?.push('webNavigation')
+
+  if (isFirefox) {
+    manifest.browser_specific_settings = {
+      gecko: {
+        id: 'addon@bewlybewly.com',
+      },
+    }
+  }
 
   return manifest
 }

@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import { useBewlyImage } from '~/composables/useImage'
 import { AppPage } from '~/enums/appEnums'
 import { settings } from '~/logic'
 
 const props = defineProps<{ activatedPage: AppPage }>()
-
+const { getBewlyImage } = useBewlyImage()
 watch(() => settings.value.wallpaperMaskOpacity, () => {
   setAppWallpaperMaskingOpacity()
 })
@@ -38,39 +39,39 @@ function setAppWallpaperMaskingOpacity() {
       <!-- background -->
       <div
         pos="absolute top-0 left-0" w-full h-full duration-300 bg="cover center $bew-homepage-bg"
-        z--1
-        :style="{ backgroundImage: `url(${settings.individuallySetSearchPageWallpaper ? settings.searchPageWallpaper : settings.wallpaper})` }"
+        z--1 transform-gpu
+        :style="{ backgroundImage: `url('${settings.individuallySetSearchPageWallpaper ? getBewlyImage(settings.searchPageWallpaper) : getBewlyImage(settings.wallpaper)}')` }"
       />
       <!-- background mask -->
-      <transition name="fade">
+      <Transition name="fade">
         <div
           v-if="(!settings.individuallySetSearchPageWallpaper && settings.enableWallpaperMasking) || (settings.searchPageEnableWallpaperMasking)"
           pos="absolute top-0 left-0" w-full h-full pointer-events-none bg="$bew-homepage-bg-mask"
-          duration-300 z--1
+          duration-300 z--1 transform-gpu
           :style="{
             backdropFilter: `blur(${settings.individuallySetSearchPageWallpaper ? settings.searchPageWallpaperBlurIntensity : settings.wallpaperBlurIntensity}px)`,
           }"
         />
-      </transition>
+      </Transition>
     </div>
     <div v-else>
       <!-- background -->
       <div
+        :style="{ backgroundImage: `url('${getBewlyImage(settings.wallpaper)}')` }"
         pos="absolute top-0 left-0" w-full h-full duration-300 bg="cover center $bew-homepage-bg"
-        z--1
-        :style="{ backgroundImage: `url(${settings.wallpaper})` }"
+        z--1 transform-gpu
       />
       <!-- background mask -->
-      <transition name="fade">
+      <Transition name="fade">
         <div
           v-if="settings.enableWallpaperMasking"
           pos="absolute top-0 left-0" w-full h-full pointer-events-none bg="$bew-homepage-bg-mask"
-          duration-300 z--1
+          duration-300 z--1 transform-gpu
           :style="{
             backdropFilter: `blur(${settings.wallpaperBlurIntensity}px)`,
           }"
         />
-      </transition>
+      </Transition>
     </div>
   </Transition>
 </template>

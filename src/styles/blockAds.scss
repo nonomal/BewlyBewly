@@ -1,0 +1,27 @@
+// Do not use the "ads" keyword. AdGuard, AdBlock, and some ad-blocking extensions will
+// detect and remove it when the class name contains "ads"
+.block-useless-contents {
+  // 原版首頁最右則推介內容
+  .floor-single-card,
+  // 首頁不能使用不感興趣的影片都當廣告殺了
+  .feed-card:has(.bili-video-card.is-rcmd:not(.enable-no-interest)),
+  .bili-video-card.is-rcmd:not(.enable-no-interest),
+  .ad-report,
+  .brand-ad-list,
+  // 检测到您的页面展示可能受到浏览器插件影响，建议您将当前页面加入插件白名单，以保障您的浏览体验～
+  .adblock-tips,
+  // 搜尋結果的遊戲廣告
+  .activity-game-list,
+  // 视频页游戏卡片
+  .video-page-game-card-small,
+  // 大家围观的直播
+  .pop-live-small-mode {
+    display: none !important;
+  }
+
+  // 首頁推介頂部卡片間距調整
+  .recommended-container_floor-aside .container > *:nth-of-type(n + 8) {
+    margin-top: 0px !important;
+    margin-bottom: 24px;
+  }
+}

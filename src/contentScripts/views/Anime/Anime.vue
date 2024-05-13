@@ -1,11 +1,20 @@
 <script setup lang="ts">
-import AnimeTimeTable from './components/AnimeTimeTable.vue'
-import { getUserID, openLinkToNewTab } from '~/utils/main'
-import { numFormatter } from '~/utils/dataFormatter'
-import type { List as WatchListItem, WatchListResult } from '~/models/anime/watchList'
+import Button from '~/components/Button.vue'
+import Empty from '~/components/Empty.vue'
+import HorizontalScrollView from '~/components/HorizontalScrollView.vue'
+import LongCoverCard from '~/components/LongCoverCard/LongCoverCard.vue'
+import LongCoverCardSkeleton from '~/components/LongCoverCard/LongCoverCardSkeleton.vue'
+import { useApiClient } from '~/composables/api'
+import { useBewlyApp } from '~/composables/useAppProvider'
 import type { List as PopularAnimeItem, PopularAnimeResult } from '~/models/anime/popular'
 import type { ItemSubItem as RecommendationItem, RecommendationResult } from '~/models/anime/recommendation'
+import type { List as WatchListItem, WatchListResult } from '~/models/anime/watchList'
+import { numFormatter } from '~/utils/dataFormatter'
+import { getUserID, openLinkToNewTab } from '~/utils/main'
 
+import AnimeTimeTable from './components/AnimeTimeTable.vue'
+
+const api = useApiClient()
 const animeWatchList = reactive<WatchListItem[]>([])
 const recommendAnimeList = reactive<RecommendationItem[]>([])
 const popularAnimeList = reactive<PopularAnimeItem[]>([])
@@ -58,13 +67,11 @@ function initPageAction() {
 
 function getAnimeWatchList() {
   isLoadingAnimeWatchList.value = true
-  browser.runtime
-    .sendMessage({
-      contentScriptQuery: 'getAnimeWatchList',
-      vmid: getUserID() ?? 0,
-      pn: 1,
-      ps: 30,
-    })
+  api.anime.getAnimeWatchList({
+    vmid: getUserID() ?? 0,
+    pn: 1,
+    ps: 30,
+  })
     .then((response: WatchListResult) => {
       const {
         code,
@@ -81,11 +88,9 @@ function getAnimeWatchList() {
 
 function getRecommendAnimeList() {
   isLoadingRecommendAnime.value = true
-  browser.runtime
-    .sendMessage({
-      contentScriptQuery: 'getRecommendAnimeList',
-      coursor: cursor.value,
-    })
+  api.anime.getRecommendAnimeList({
+    coursor: cursor.value,
+  })
     .then((response: RecommendationResult) => {
       const {
         code,
@@ -109,10 +114,7 @@ function getRecommendAnimeList() {
 
 function getPopularAnimeList() {
   isLoadingPopularAnime.value = true
-  browser.runtime
-    .sendMessage({
-      contentScriptQuery: 'getPopularAnimeList',
-    })
+  api.anime.getPopularAnimeList()
     .then((response: PopularAnimeResult) => {
       const {
         code,
@@ -171,7 +173,7 @@ function getPopularAnimeList() {
               :capsule-text="item.is_finish
                 ? $t('anime.total_episodes', { ep: item.total_count })
                 : $t('anime.update_to_n_episodes', {
-                  ep: item.total_count,
+                  ep: item.formal_ep_count,
                 })"
               :desc="item.progress !== '' ? item.progress : $t('anime.havent_seen')"
               w="2xl:[calc(100%/6-1.5rem)] xl:[calc(100%/5-1.5rem)] lg:[calc(100%/4-1.5rem)] md:[calc(100%/3-1.5rem)] sm:[calc(100%/2-1.5rem)] [calc(100%-1.5rem)]"

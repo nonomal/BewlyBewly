@@ -1,11 +1,17 @@
 <script lang="ts" setup>
 import { useI18n } from 'vue-i18n'
 import draggable from 'vuedraggable'
-import { Icon } from '@iconify/vue'
+
+import Button from '~/components/Button.vue'
+import Radio from '~/components/Radio.vue'
+import Select from '~/components/Select.vue'
 import { settings } from '~/logic'
 import { useMainStore } from '~/stores/mainStore'
 
-const mainStore = useMainStore() as any
+import SettingsItem from './SettingsItem.vue'
+import SettingsItemGroup from './SettingsItemGroup.vue'
+
+const mainStore = useMainStore()
 const { t, locale } = useI18n()
 
 const langOptions = computed(() => {
@@ -44,6 +50,22 @@ const dockPositions = computed(() => {
     },
   ]
 })
+const topBarIconBadgesOptions = computed(() => {
+  return [
+    {
+      label: t('settings.topbar_icon_badges_opt.number'),
+      value: 'number',
+    },
+    {
+      label: t('settings.topbar_icon_badges_opt.dot'),
+      value: 'dot',
+    },
+    {
+      label: t('settings.topbar_icon_badges_opt.none'),
+      value: 'none',
+    },
+  ]
+})
 
 const pageOptions = computed((): { label: string, icon: string, value: string }[] => {
   return mainStore.dockItems.map((e: any) => {
@@ -67,6 +89,14 @@ function resetDockContent() {
     }
   })
 }
+
+function handleToggleDockItem(dockItem: any) {
+  // Prevent disabling all dock items if there is only one
+  if (settings.value.dockItemVisibilityList.filter(dockItem => dockItem.visible === true).length > 1)
+    dockItem.visible = !dockItem.visible
+  else
+    dockItem.visible = true
+}
 </script>
 
 <template>
@@ -87,20 +117,46 @@ function resetDockContent() {
       <!-- <SettingsItem title="Open link in current tab">
         <Radio v-model="settings.openLinkInCurrentTab" />
       </SettingsItem> -->
-      <SettingsItem :title="$t('settings.enable_video_ctrl_bar_on_video_card')">
-        <Radio v-model="settings.enableVideoCtrlBarOnVideoCard" />
+    </SettingsItemGroup>
+
+    <SettingsItemGroup :title="$t('settings.group_video_card')">
+      <SettingsItem :title="$t('settings.enable_video_preview')">
+        <Radio v-model="settings.enableVideoPreview" />
       </SettingsItem>
-      <SettingsItem :title="$t('settings.hover_video_card_delayed')">
-        <Radio v-model="settings.hoverVideoCardDelayed" />
+      <template v-if="settings.enableVideoPreview">
+        <SettingsItem :title="$t('settings.enable_video_ctrl_bar_on_video_card')">
+          <Radio v-model="settings.enableVideoCtrlBarOnVideoCard" />
+        </SettingsItem>
+        <SettingsItem :title="$t('settings.hover_video_card_delayed')">
+          <Radio v-model="settings.hoverVideoCardDelayed" />
+        </SettingsItem>
+      </template>
+    </SettingsItemGroup>
+
+    <SettingsItemGroup>
+      <SettingsItem :title="$t('settings.block_ads')">
+        <Radio v-model="settings.blockAds" />
+      </SettingsItem>
+    </SettingsItemGroup>
+
+    <SettingsItemGroup :title="$t('settings.group_performance')">
+      <SettingsItem :title="$t('settings.disable_frosted_glass')">
+        <Radio v-model="settings.disableFrostedGlass" />
+      </SettingsItem>
+      <SettingsItem
+        v-if="!settings.disableFrostedGlass"
+        :title="$t('settings.reduce_frosted_glass_blur')"
+      >
+        <Radio v-model="settings.reduceFrostedGlassBlur" />
       </SettingsItem>
     </SettingsItemGroup>
 
     <SettingsItemGroup :title="$t('settings.group_topbar')">
-      <!-- <SettingsItem :title="$t('settings.topbar_visibility')" :desc="$t('settings.topbar_visibility_desc')">
-        <Radio v-model="settings.showTopBar" :label="settings.showTopBar ? $t('settings.chk_box.show') : $t('settings.chk_box.hidden')" />
-      </SettingsItem> -->
       <SettingsItem :title="$t('settings.auto_hide_topbar')">
         <Radio v-model="settings.autoHideTopBar" />
+      </SettingsItem>
+      <SettingsItem :title="$t('settings.topbar_icon_badges')">
+        <Select v-model="settings.topBarIconBadges" :options="topBarIconBadgesOptions" w="full" />
       </SettingsItem>
     </SettingsItemGroup>
 
@@ -121,7 +177,7 @@ function resetDockContent() {
             {{ $t('settings.dock_content_adjustment') }}
             <Button size="small" type="secondary" @click="resetDockContent">
               <template #left>
-                <mingcute:back-line />
+                <div i-mingcute:back-line />
               </template>
               {{ $t('common.reset') }}
             </Button>
@@ -140,9 +196,9 @@ function resetDockContent() {
                 background: element.visible ? 'var(--bew-theme-color)' : 'var(--bew-fill-1)',
                 color: element.visible ? 'white' : 'var(--bew-text-1)',
               }"
-              @click="element.visible = !element.visible"
+              @click="handleToggleDockItem(element)"
             >
-              <Icon :icon="pageOptions.find((page:any) => (page.value === element.page))?.icon as string" />
+              <div :class="pageOptions.find((page:any) => (page.value === element.page))?.icon as string" />
               {{ pageOptions.find(option => option.value === element.page)?.label }}
             </div>
           </template>

@@ -1,4 +1,5 @@
 import { useStorageLocal } from '~/composables/useStorageLocal'
+import type { HomeSubPage } from '~/contentScripts/views/Home/types'
 import type { AppPage } from '~/enums/appEnums'
 
 // TODO: refactor: implement storage functionality using pinia + useStorageLocal()
@@ -10,9 +11,14 @@ export interface Settings {
   language: string
   enableHorizontalScrolling: boolean
   openLinkInCurrentTab: boolean
+  enableVideoPreview: boolean
   enableVideoCtrlBarOnVideoCard: boolean
   hoverVideoCardDelayed: boolean
   autoHideTopBar: boolean
+  topBarIconBadges: 'number' | 'dot' | 'none'
+  blockAds: boolean
+  disableFrostedGlass: boolean
+  reduceFrostedGlassBlur: boolean
   dockPosition: 'left' | 'right' | 'bottom'
   autoHideDock: boolean
   dockItemVisibilityList: { page: AppPage, visible: boolean }[]
@@ -39,8 +45,10 @@ export interface Settings {
   searchPageWallpaperBlurIntensity: number
 
   recommendationMode: 'web' | 'app'
+  homePageTabVisibilityList: { page: HomeSubPage, visible: boolean }[]
   useSearchPageModeOnHomePage: boolean
   searchPageModeWallpaperFixed: boolean
+  alwaysShowTheTopBarLogoOnSearchPageMode: boolean
 
   adaptToOtherPageStyles: boolean
   showTopBar: boolean
@@ -50,11 +58,16 @@ export const settings = useStorageLocal('settings', ref<Settings>({
   language: '',
   enableHorizontalScrolling: false,
   openLinkInCurrentTab: false,
+  enableVideoPreview: true,
   enableVideoCtrlBarOnVideoCard: false,
   hoverVideoCardDelayed: false,
   autoHideTopBar: false,
+  topBarIconBadges: 'number',
   dockPosition: 'right',
   autoHideDock: false,
+  blockAds: false,
+  disableFrostedGlass: false,
+  reduceFrostedGlassBlur: false,
   dockItemVisibilityList: [],
 
   theme: 'auto',
@@ -62,7 +75,7 @@ export const settings = useStorageLocal('settings', ref<Settings>({
   wallpaperMode: 'buildIn',
   wallpaper: '',
   enableWallpaperMasking: false,
-  wallpaperMaskOpacity: 0,
+  wallpaperMaskOpacity: 80,
   wallpaperBlurIntensity: 0,
 
   searchPageDarkenOnSearchFocus: true,
@@ -79,10 +92,15 @@ export const settings = useStorageLocal('settings', ref<Settings>({
   searchPageWallpaperBlurIntensity: 0,
 
   recommendationMode: 'web',
+  homePageTabVisibilityList: [],
   useSearchPageModeOnHomePage: false,
   searchPageModeWallpaperFixed: false,
+  alwaysShowTheTopBarLogoOnSearchPageMode: false,
 
   adaptToOtherPageStyles: true,
   showTopBar: true,
   useOriginalBilibiliHomepage: false,
 }), { mergeDefaults: true })
+
+export type GridLayout = 'adaptive' | 'twoColumns' | 'oneColumn'
+export const homePageGridLayout = useStorageLocal('homePageGridLayout', ref<GridLayout>('adaptive'), { mergeDefaults: true })

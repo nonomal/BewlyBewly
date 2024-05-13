@@ -1,8 +1,12 @@
 <script lang="ts" setup>
-import { getCSRF, removeHttpFromUrl } from '~/utils/main'
-import { calcCurrentTime, calcTimeSince, numFormatter } from '~/utils/dataFormatter'
-import type { VideoPreviewResult } from '~/models/video/videoPreview'
+import Button from '~/components/Button.vue'
+import { useApiClient } from '~/composables/api'
 import { settings } from '~/logic'
+import type { VideoPreviewResult } from '~/models/video/videoPreview'
+import { calcCurrentTime, calcTimeSince, numFormatter } from '~/utils/dataFormatter'
+import { getCSRF, removeHttpFromUrl } from '~/utils/main'
+
+import Tooltip from '../Tooltip.vue'
 
 interface Props {
   id: number
@@ -13,6 +17,8 @@ interface Props {
   cover: string
   author?: string
   authorFace?: string
+  /** If you set the `authorUrl`, clicking the author's name or avatar will navigate to this url  */
+  authorUrl?: string
   mid?: number
   view?: number
   viewStr?: string
@@ -22,45 +28,78 @@ interface Props {
   capsuleText?: string
   bvid?: string
   aid?: number
+  uri?: string
   /** If you want to show preview video, you should set the cid value */
   cid?: number
   epid?: number
-  isFollowed?: boolean
+  followed?: boolean
   horizontal?: boolean
   tag?: string
   rank?: number
   topRightContent?: boolean
   showPreview?: boolean
+  moreBtn?: boolean
+  moreBtnActive?: boolean
+  removed?: boolean
+  type?: 'horizontal' | 'vertical' | 'bangumi'
 }
 
 const props = withDefaults(defineProps<Props>(), {
   topRightContent: true,
+  type: 'horizontal',
 })
 
+const emit = defineEmits<{
+  (e: 'moreClick', event: MouseEvent): MouseEvent
+  (e: 'undo'): void
+  (e: 'tellUsWhy'): void
+}>()
+
+const api = useApiClient()
+
+// Used to click and control herf attribute
+const isClick = ref<boolean>(false)
+
 const videoUrl = computed(() => {
+  if (!isClick.value)
+    return undefined
   if (props.bvid || props.aid)
     return `https://www.bilibili.com/video/${props.bvid ?? `av${props.aid}`}`
   else if (props.epid)
     return `https://www.bilibili.com/bangumi/play/ep${props.epid}`
+  else if (props.uri)
+    return props.uri
   else
     return ''
 })
 
-const isDislike = ref<boolean>(false)
+const authorJumpUrl = computed(() => {
+  if (props.authorUrl)
+    return props.authorUrl
+  else if (props.mid)
+    return `//space.bilibili.com/${props.mid}`
+  else
+    return ''
+})
+
+const wValue = computed((): string => {
+  if (props.horizontal)
+    return 'xl:280px lg:250px md:200px 200px'
+  else
+    return 'w-full'
+})
+
 const isInWatchLater = ref<boolean>(false)
 const isHover = ref<boolean>(false)
-// const dislikeReasonId = ref<number | null>(null)
-const showPopCtrl = ref<boolean>(false)
 const contentVisibility = ref<'auto' | 'visible'>('auto')
 const mouseEnterTimeOut = ref()
 const mouseLeaveTimeOut = ref()
 const previewVideoUrl = ref<string>('')
 
 watch(() => isHover.value, (newValue) => {
-  if (props.showPreview) {
+  if (props.showPreview && settings.value.enableVideoPreview) {
     if (newValue && !previewVideoUrl.value && props.cid) {
-      browser.runtime.sendMessage({
-        contentScriptQuery: 'getVideoPreview',
+      api.video.getVideoPreview({
         bvid: props.bvid,
         cid: props.cid,
       }).then((res: VideoPreviewResult) => {
@@ -71,14 +110,9 @@ watch(() => isHover.value, (newValue) => {
   }
 })
 
-function gotoChannel(mid: number) {
-  window.open(`//space.bilibili.com/${mid}`)
-}
-
 function toggleWatchLater() {
   if (!isInWatchLater.value) {
-    browser.runtime.sendMessage({
-      contentScriptQuery: 'saveToWatchLater',
+    api.watchlater.saveToWatchLater({
       aid: props.id,
       csrf: getCSRF(),
     })
@@ -88,8 +122,7 @@ function toggleWatchLater() {
       })
   }
   else {
-    browser.runtime.sendMessage({
-      contentScriptQuery: 'removeFromWatchLater',
+    api.watchlater.removeFromWatchLater({
       aid: props.id,
       csrf: getCSRF(),
     })
@@ -124,95 +157,102 @@ function handelMouseLeave() {
   }, 300)
 }
 
-// function submitDislike(
-//   reasonID: number,
-//   goto: string,
-//   id: string,
-//   mid: number,
-//   rid: number,
-//   tagID: number,
-// ) {
-//   browser.runtime
-//     .sendMessage({
-//       contentScriptQuery: 'submitDislike',
-//       accessKey: accessKey.value,
-//       reasonID,
-//       goto,
-//       id,
-//       mid,
-//       rid,
-//       tagID,
-//     })
-//     .then((res) => {
-//       if (res.code === 0) {
-//         isDislike.value = true
-//         dislikeReasonId.value = reasonID
-//       }
-//     })
-// }
+function switchClickState(flag: boolean) {
+  if (flag) {
+    isClick.value = flag
+  }
+  else {
+    setTimeout(() => {
+      isClick.value = flag
+    })
+  }
+}
 
-// function undoDislike(
-//   reasonID: number,
-//   goto: string,
-//   id: string,
-//   mid: number,
-//   rid: number,
-//   tagID: number,
-// ) {
-//   browser.runtime
-//     .sendMessage({
-//       contentScriptQuery: 'undoDislike',
-//       accessKey,
-//       reasonID,
-//       goto,
-//       id,
-//       mid,
-//       rid,
-//       tagID,
-//     })
-//     .then((res) => {
-//       if (res.code === 0) {
-//         isDislike.value = false
-//         dislikeReasonId.value = null
-//         showPopCtrl.value = false
-//       }
-//     })
-// }
+function handleMoreBtnClick(event: MouseEvent) {
+  emit('moreClick', event)
+}
+
+function handleUndo() {
+  emit('undo')
+}
 </script>
 
 <template>
   <div
     relative
   >
+    <!-- By directly using predefined unocss width properties, it is possible to dynamically set the width attribute -->
+    <div hidden w="xl:280px lg:250px md:200px 200px" />
+    <div hidden w="full" />
+
+    <template v-if="removed">
+      <div
+        :style="{ contentVisibility }"
+        w-full
+        pos="absolute top-0 left-0" aspect-video
+      >
+        <div :w="wValue" h-fit relative>
+          <img
+            :src="`${removeHttpFromUrl(cover)}@672w_378h_1c`" alt=""
+            w-full h-fit object-cover pos="absolute top-0 left-0" aspect-video
+            z--1 rounded="$bew-radius"
+          >
+
+          <div
+            pos="absolute top-0 left-0" w-full h-fit aspect-video flex="~ col gap-2 items-center justify-center"
+            bg="$bew-fill-4" backdrop-blur-20px mix-blend-luminosity transform-gpu rounded="$bew-radius"
+          >
+            <p mb-2 color-white text-lg>
+              {{ $t('home.video_removed') }}
+            </p>
+            <Button
+              color="rgba(255,255,255,.35)" text-color="white" size="small"
+              @click="handleUndo"
+            >
+              <template #left>
+                <div i-mingcute-back-line text-lg />
+              </template>
+              {{ $t('common.undo') }}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </template>
     <div
+      v-else
       class="video-card group"
-      :class="isDislike ? 'is-dislike' : ''"
       w="full" pos="absolute top-0 left-0"
       rounded="$bew-radius" duration-300 ease-in-out
-      hover:bg="$bew-fill-2" hover:ring="8 $bew-fill-2"
+      bg="hover:$bew-fill-2 active:$bew-fill-3" hover:ring="8 $bew-fill-2" active:ring="8 $bew-fill-3"
       :style="{ contentVisibility }"
     >
-      <div :style="{ display: horizontal ? 'flex' : 'block', gap: horizontal ? '1.5rem' : '0' }">
+      <a
+        :style="{ display: horizontal ? 'flex' : 'block', gap: horizontal ? '1.5rem' : '0' }"
+        :href="videoUrl" target="_blank" rel="noopener noreferrer"
+        @mouseenter="handleMouseEnter"
+        @mouseleave="handelMouseLeave"
+        @mousedown="switchClickState(true)"
+        @mouseup="switchClickState(false)"
+        @dragend="switchClickState(false)"
+      >
         <!-- Cover -->
         <div
-          :style="{ width: horizontal ? '300px' : '100%' }"
           class="group/cover"
           shrink-0
-          w="full" h-fit relative bg="$bew-fill-4" rounded="$bew-radius"
+          :w="wValue" h-fit relative bg="$bew-fill-4" rounded="$bew-radius"
           cursor-pointer
           duration-300 ease-in-out
           group-hover:z-2
-          @mouseenter="handleMouseEnter"
-          @mouseleave="handelMouseLeave"
         >
           <!-- Video preview -->
-          <Transition v-if="showPreview" name="fade">
+          <Transition v-if="showPreview && settings.enableVideoPreview" name="fade">
             <video
               v-if="previewVideoUrl && isHover"
               autoplay muted
               :controls="settings.enableVideoCtrlBarOnVideoCard"
               :style="{ pointerEvents: settings.enableVideoCtrlBarOnVideoCard ? 'auto' : 'none' }"
               pos="absolute top-0 left-0" w-full aspect-video rounded="$bew-radius" bg-black
+              @mouseenter="handleMouseEnter"
             >
               <source :src="previewVideoUrl" type="video/mp4">
             </video>
@@ -251,7 +291,7 @@ function handelMouseLeave() {
             rounded="$bew-radius"
             text="!white xs"
             bg="black opacity-60"
-            class="group-hover/cover:opacity-0"
+            class="group-hover:opacity-0"
             duration-300
           >
             {{ duration ? calcCurrentTime(duration) : durationStr }}
@@ -276,26 +316,24 @@ function handelMouseLeave() {
             class="opacity-0 group-hover/cover:opacity-100"
             transform="scale-70 group-hover/cover:scale-100"
             duration-300
-            @click.stop="toggleWatchLater"
+            @click.prevent="toggleWatchLater"
           >
             <Tooltip v-if="!isInWatchLater" :content="$t('common.save_to_watch_later')" placement="bottom" type="dark">
-              <mingcute:carplay-line />
+              <div i-mingcute:carplay-line />
             </Tooltip>
             <Tooltip v-else :content="$t('common.added')" placement="bottom" type="dark">
-              <line-md:confirm />
+              <div i-line-md:confirm />
             </Tooltip>
           </button>
 
           <!-- Video cover -->
-          <a :href="videoUrl" target="_blank">
-            <img
-              :src="`${removeHttpFromUrl(cover)}@672w_378h_1c`"
-              loading="lazy"
-              w="full" max-w-full align-middle aspect-video
-              bg="cover center"
-              rounded="$bew-radius"
-            >
-          </a>
+          <img
+            :src="`${removeHttpFromUrl(cover)}@672w_378h_1c`"
+            loading="lazy"
+            w="full" max-w-full align-middle aspect-video
+            bg="cover center"
+            rounded="$bew-radius"
+          >
         </div>
 
         <!-- Other Information -->
@@ -307,169 +345,148 @@ function handelMouseLeave() {
           flex="~"
         >
           <!-- Author Avatar -->
-          <div :style="{ display: horizontal ? 'none' : 'flex' }">
+          <div v-if="!horizontal" flex>
             <a
               v-if="authorFace"
-              m="r-4" w="40px" h="40px" rounded="1/2" overflow="hidden"
-              object="center cover"
-              bg="$bew-fill-4" cursor="pointer"
-              style="--un-shadow: 0 0 0 2px var(--bew-theme-color)"
-              :href="`//space.bilibili.com/${mid}`" target="_blank"
+              :href="authorJumpUrl" target="_blank" rel="noopener noreferrer"
+              m="r-4" w="36px" h="36px" rounded="1/2"
+              object="center cover" bg="$bew-fill-4" cursor="pointer"
+              position-relative
               @click.stop=""
             >
               <img
+                rounded="1/2"
                 :src="`${removeHttpFromUrl(authorFace)}@50w_50h_1c`"
-                width="40"
-                height="40"
+                width="36"
+                height="36"
                 loading="lazy"
               >
+              <div
+                v-if="followed"
+                pos="absolute bottom--2px right--2px"
+                w-14px h-14px
+                bg="$bew-theme-color"
+                rounded="1/2"
+                grid place-items-center
+              >
+                <div color-white text-sm class="i-mingcute:check-fill w-10px h-10px" />
+              </div>
             </a>
           </div>
-          <div class="meta" flex="~ col" w="full" align="items-start">
-            <div flex="~" justify="between" w="full" pos="relative">
+          <div class="group/desc" flex="~ col" w="full" align="items-start">
+            <div flex="~ gap-1 justify-between items-start" w="full" pos="relative">
               <h3
                 class="keep-two-lines"
                 text="lg overflow-ellipsis $bew-text-1"
                 cursor="pointer"
               >
-                <a :href="videoUrl" target="_blank" :title="title">
-                  {{ title }}</a>
+                <a :href="videoUrl" target="_blank" :title="title" rel="noopener noreferrer">
+                  {{ title }}
+                </a>
               </h3>
 
-              <!-- <div
-                id="dislike-control-btn"
-                class="icon-btn"
-                p="t-0.15rem x-2"
-                pointer="auto"
-                display="invisible"
-                group-hover:display="visible"
-                @click.stop="showPopCtrl = !showPopCtrl"
+              <div
+                v-if="moreBtn"
+                class="opacity-0 group-hover/desc:opacity-100"
+                :class="{ 'more-active': moreBtnActive }"
+                shrink-0 w-30px h-30px m="t--3px r--8px" translate-x--8px
+                grid place-items-center
+                pointer="auto" rounded="50%" duration-300
+                @click.prevent="handleMoreBtnClick"
               >
-                <tabler:dots-vertical text="lg" />
-              </div> -->
-
-              <!-- dislike control -->
-              <template v-if="showPopCtrl">
-                <!-- cover mask -->
-                <div
-                  pos="fixed top-0 left-0"
-                  w="full"
-                  h="full"
-                  z="30"
-                  @click="showPopCtrl = false"
-                />
-
-              <!-- dislike reason popup -->
-              <!-- <div
-                  pos="absolute top-9 right-0"
-                  p="2"
-                  z="30"
-                  w="180px"
-                  bg="$bew-content-1"
-                  rounded="$bew-radius"
-                  style="
-                    box-shadow: var(--bew-shadow-2);
-                    backdrop-filter: var(--bew-filter-glass);
-                  "
-                >
-                  <p p="2" text="$bew-text-3">
-                    {{ $t('home.not_interested_in') }}
-                  </p>
-                  <ul>
-                    <li
-                      v-for="reason in dislikeReasons"
-                      :key="reason.reason_id"
-                      p="2"
-                      m="b-1"
-                      cursor="pointer"
-                      hover:bg="$bew-fill-2"
-                      transition="all duration-300"
-                      rounded="$bew-radius"
-                      @click.stop="
-                        submitDislike(
-                          reason.reason_id,
-                          goto,
-                          param,
-                          mid,
-                          tid,
-                          tag.tag_id,
-                        )
-                      "
+                <div i-mingcute:more-2-line text="lg" />
+              </div>
+            </div>
+            <div text="base $bew-text-2" w-fit m="t-2" flex="~ items-center wrap">
+              <!-- Author Avatar -->
+              <span flex="inline items-center">
+                <div v-if="horizontal" flex mb-2>
+                  <a
+                    v-if="authorFace"
+                    :href="authorJumpUrl" target="_blank" rel="noopener noreferrer"
+                    m="r-2" w="30px" h="30px" rounded="1/2"
+                    object="center cover" bg="$bew-fill-4" cursor="pointer" relative
+                    @click.stop=""
+                  >
+                    <img
+                      :src="`${removeHttpFromUrl(authorFace)}@50w_50h_1c`"
+                      width="30"
+                      height="30"
+                      loading="lazy"
+                      object-cover rounded="1/2"
                     >
-                      {{ reason.reason_name }}
-                    </li>
-                  </ul>
-                </div> -->
-              </template>
-            </div>
-            <div text="base $bew-text-2" w-fit m="t-2">
-              <span
-                v-if="author"
-                class="channel-name"
-                text="hover:$bew-text-1"
-                cursor-pointer mr-4
-                @click="gotoChannel(mid ?? 0)"
-              >
-                {{ author }}
+                    <div
+                      v-if="followed"
+                      pos="absolute bottom--2px right--2px"
+                      w-14px h-14px
+                      bg="$bew-theme-color"
+                      rounded="1/2"
+                      grid place-items-center
+                    >
+                      <div color-white text-sm class="i-mingcute:check-fill w-10px h-10px" />
+                    </div>
+                  </a>
+                </div>
+
+                <a
+                  v-if="author"
+                  class="channel-name"
+                  un-text="hover:$bew-text-1"
+                  cursor-pointer mr-4
+                  :href="authorJumpUrl" target="_blank" rel="noopener noreferrer"
+                  @click.stop=""
+                >
+                  <span>{{ author }}</span>
+                </a>
               </span>
-              <template v-if="horizontal">
-                <span v-if="view || viewStr">{{
-                  view ? $t('common.view', { count: numFormatter(view) }, view) : `${viewStr}${$t('common.viewWithoutNum')}`
-                }}</span>
-                <template v-if="danmaku || danmakuStr">
-                  <span text-xs font-light mx-1>•</span>
-                  <span>{{ danmaku ? $t('common.danmaku', { count: numFormatter(danmaku) }, danmaku) : `${danmakuStr}${$t('common.danmakuWithoutNum')}` }}</span>
-                </template>
-              </template>
-            </div>
-            <!-- Video Description -->
-            <div
-              v-if="desc"
-              :title="desc"
-              class="keep-two-lines"
-              mt-2 text="base $bew-text-3" w-full max-h-12
-              style="white-space: pre-line;"
-            >
-              {{ desc }}
             </div>
 
-            <div text="base $bew-text-2">
+            <div flex="~ items-center gap-1 wrap">
               <!-- View & Danmaku Count -->
-              <template v-if="!horizontal">
-                <span v-if="view || viewStr">{{
-                  view ? $t('common.view', { count: numFormatter(view) }, view) : `${viewStr}${$t('common.viewWithoutNum')}`
-                }}</span>
+              <div
+                text="$bew-text-2" rounded="$bew-radius"
+                inline-block
+              >
+                <span v-if="view || viewStr">
+                  {{ view ? $t('common.view', { count: numFormatter(view) }, view) : `${viewStr}${$t('common.viewWithoutNum')}` }}
+                </span>
                 <template v-if="danmaku || danmakuStr">
-                  <span text-xs font-light mx-1>•</span>
+                  <span text-xs font-light mx-4px>•</span>
                   <span>{{ danmaku ? $t('common.danmaku', { count: numFormatter(danmaku) }, danmaku) : `${danmakuStr}${$t('common.danmakuWithoutNum')}` }}</span>
                 </template>
                 <br>
-              </template>
-
+              </div>
+            </div>
+            <div mt-2 flex="~ gap-1">
               <!-- Tag -->
               <span
-                v-if="tag" text="sm $bew-theme-color" p="x-2 y-1" rounded="$bew-radius" bg="$bew-theme-color-20"
-                w-fit m="t-2 r-2"
+                v-if="tag"
+                text="$bew-theme-color sm" lh-6 p="x-2" rounded="$bew-radius" bg="$bew-theme-color-20"
               >
                 {{ tag }}
               </span>
-              <!-- Capsule -->
               <span
-                v-if="publishedTimestamp || capsuleText" text="$bew-text-3 sm" inline-block mt-2 p="x-2 y-1"
-                bg="$bew-fill-1" rounded-4
+                v-if="publishedTimestamp || capsuleText"
+                bg="$bew-fill-1" p="x-2" rounded="$bew-radius" text="sm $bew-text-3" lh-6
+                mr-1
               >
-                {{ publishedTimestamp ? calcTimeSince(publishedTimestamp * 1000) : capsuleText }}
+                {{ publishedTimestamp ? calcTimeSince(publishedTimestamp * 1000) : capsuleText?.trim() }}
+              </span>
+              <!-- Video type -->
+              <span text="$bew-text-2" grid="~ place-items-center">
+                <div v-if="type === 'vertical'" i-mingcute:cellphone-2-line />
+                <div v-else-if="type === 'bangumi'" i-mingcute:movie-line />
               </span>
             </div>
           </div>
         </div>
-      </div>
+      </a>
     </div>
 
     <!-- skeleton -->
     <template v-if="!horizontal">
       <div
-        block mb-10 pointer-events-none select-none invisible
+        block mb-4 pointer-events-none select-none invisible
       >
         <!-- Cover -->
         <div w-full shrink-0 aspect-video h-fit rounded="$bew-radius" />
@@ -478,7 +495,7 @@ function handelMouseLeave() {
           mt-4 flex="~ gap-4"
         >
           <div
-            block w="40px" h="40px" rounded="1/2" shrink-0
+            block w="36px" h="36px" rounded="1/2" shrink-0
           />
           <div w-full>
             <div grid gap-2>
@@ -486,11 +503,11 @@ function handelMouseLeave() {
               <div w="3/4" h-5 />
             </div>
             <div grid gap-2 mt-4>
-              <div w="50%" h-4 />
+              <div w="40%" h-4 />
               <div w="80%" h-4 />
             </div>
-            <div mt-4 flex>
-              <div text="transparent sm" inline-block p="x-2 y-1" rounded-4>
+            <div mt-2 flex>
+              <div text="transparent sm" inline-block p="x-2" h-7 rounded-4>
                 hello world
               </div>
             </div>
@@ -501,10 +518,13 @@ function handelMouseLeave() {
     <template v-else>
       <div
         flex="~ gap-6"
-        mb-10 pointer-events-none select-none invisible
+        mb-4 pointer-events-none select-none invisible
       >
         <!-- Cover -->
-        <div w-300px shrink-0 aspect-video h-fit rounded="$bew-radius" />
+        <div
+          :w="wValue"
+          shrink-0 aspect-video h-fit rounded="$bew-radius"
+        />
         <!-- Other Information -->
         <div
           w-full flex="~ gap-4"
@@ -518,7 +538,7 @@ function handelMouseLeave() {
               <div w="70%" h-4 />
             </div>
             <div mt-4 flex>
-              <div text="transparent sm" inline-block p="x-2 y-1" rounded-4>
+              <div text="transparent sm" inline-block p="x-2" h-7 rounded-4>
                 hello world
               </div>
             </div>
@@ -530,9 +550,13 @@ function handelMouseLeave() {
 </template>
 
 <style lang="scss" scoped>
-.video-card.is-dislike {
-  > *:not(#dislike-control) {
-    --at-apply: invisible pointer-events-none duration-0 transition-none;
-  }
+// .video-card.is-dislike {
+//   > *:not(#dislike-control) {
+//     --at-apply: invisible pointer-events-none duration-0 transition-none;
+//   }
+// }
+
+.more-active {
+  --at-apply: opacity-100 bg-$bew-fill-3;
 }
 </style>

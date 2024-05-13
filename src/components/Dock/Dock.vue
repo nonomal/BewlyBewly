@@ -1,26 +1,26 @@
 <script setup lang="ts">
-import { useI18n } from 'vue-i18n'
-import { Icon } from '@iconify/vue'
-import type { CurrentDockItem, HoveringDockItem } from './types'
-import type { AppPage } from '~/enums/appEnums'
+import { useDark } from '~/composables/useDark'
+import { AppPage } from '~/enums/appEnums'
 import { settings } from '~/logic'
 import type { DockItem } from '~/stores/mainStore'
 import { useMainStore } from '~/stores/mainStore'
 
+import Tooltip from '../Tooltip.vue'
+import type { HoveringDockItem } from './types'
+
 defineProps<{ activatedPage: AppPage }>()
 
 const emit = defineEmits(['change-page', 'settings-visibility-change'])
-const { mainAppRef } = useBewlyApp()
 
 const mainStore = useMainStore()
-const { t } = useI18n()
+const { isDark, toggleDark } = useDark()
 
 const hideDock = ref<boolean>(false)
-
 const hoveringDockItem = reactive<HoveringDockItem>({
   themeMode: false,
   settings: false,
 })
+const currentDockItems = ref<DockItem[]>([])
 
 const tooltipPlacement = computed(() => {
   if (settings.value.dockPosition === 'left')
@@ -32,128 +32,40 @@ const tooltipPlacement = computed(() => {
   return 'right'
 })
 
-const currentAppColorScheme = computed((): 'dark' | 'light' => {
-  if (settings.value.theme !== 'auto')
-    return settings.value.theme
-  else
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-})
-
-const currentDockItems = computed((): CurrentDockItem[] => {
-  return mainStore.dockItems.map((e: DockItem) => {
-    return {
-      label: t(e.i18nKey),
-      icon: e.icon,
-      iconActivated: e.iconActivated,
-      page: e.page,
-    }
-  })
-})
-
 watch(() => settings.value.autoHideDock, (newValue) => {
   hideDock.value = newValue
 })
+
+// use Json stringify to watch the changes of the array item properties
+watch(() => JSON.stringify(settings.value.dockItemVisibilityList), () => {
+  currentDockItems.value = computeDockItem()
+})
+
+function computeDockItem(): DockItem[] {
+  // if dockItemVisibilityList not fresh , set it to default
+  if (!settings.value.dockItemVisibilityList.length || settings.value.dockItemVisibilityList.length !== mainStore.dockItems.length)
+    settings.value.dockItemVisibilityList = mainStore.dockItems.map(dock => ({ page: dock.page, visible: true }))
+
+  const targetDockItems: DockItem[] = []
+
+  settings.value.dockItemVisibilityList.forEach((item) => {
+    const foundItem = mainStore.dockItems.find(defaultItem => defaultItem.page === item.page)
+    item.visible && targetDockItems.push({
+      i18nKey: foundItem?.i18nKey || '',
+      icon: foundItem?.icon || '',
+      iconActivated: foundItem?.iconActivated || '',
+      page: foundItem?.page || AppPage.Home,
+    })
+  })
+  return targetDockItems
+}
 
 onMounted(() => {
   if (settings.value.autoHideDock)
     hideDock.value = true
 
-  if (settings.value.dockItemVisibilityList.length < currentDockItems.value.length || settings.value.dockItemVisibilityList.length > currentDockItems.value.length) {
-    const newDockItemVisibilityList = ref<{ page: AppPage, visible: boolean }[]>([])
-    currentDockItems.value.forEach((item) => {
-      newDockItemVisibilityList.value.push({ page: item.page, visible: true })
-    })
-
-    // Compare two arrays, get the differing elements, and delete or add them to the dockItemVisibilityList
-    const notInNewDockItemVisibilityList = settings.value.dockItemVisibilityList.filter(obj1 =>
-      !newDockItemVisibilityList.value.some(obj2 => obj1.page === obj2.page),
-    )
-    const notInDockItemVisibilityList = newDockItemVisibilityList.value.filter(obj1 =>
-      !settings.value.dockItemVisibilityList.some(obj2 => obj1.page === obj2.page),
-    )
-    const allDifferences = [...notInDockItemVisibilityList, ...notInNewDockItemVisibilityList]
-
-    if (settings.value.dockItemVisibilityList.length < currentDockItems.value.length) {
-      settings.value.dockItemVisibilityList.push(...allDifferences)
-    }
-    else {
-      allDifferences.forEach((obj1) => {
-        settings.value.dockItemVisibilityList = settings.value.dockItemVisibilityList.filter(obj2 => obj2.page !== obj1.page)
-      })
-    }
-  }
+  currentDockItems.value = computeDockItem()
 })
-
-function toggleDark(e: MouseEvent) {
-  const isAppearanceTransition = typeof document !== 'undefined'
-  // @ts-expect-error: Transition API
-    && document.startViewTransition
-    && !window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  if (!isAppearanceTransition) {
-    if (currentAppColorScheme.value === 'light')
-      settings.value.theme = 'dark'
-    else
-      settings.value.theme = 'light'
-  }
-  else {
-    const x = e.clientX
-    const y = e.clientY
-    const endRadius = Math.hypot(
-      Math.max(x, innerWidth - x),
-      Math.max(y, innerHeight - y),
-    )
-    // https://github.com/vueuse/vueuse/pull/3129
-    const style = document.createElement('style')
-    const styleString = `
-    *, *::before, *::after
-    {-webkit-transition:none!important;-moz-transition:none!important;-o-transition:none!important;-ms-transition:none!important;transition:none!important}`
-    style.appendChild(document.createTextNode(styleString))
-    document.head.appendChild(style)
-
-    // Since the above normal dom style cannot be applied in shadow dom style
-    // We need to add this style again to the shadow dom
-    const shadowDomStyle = document.createElement('style')
-    const shadowDomStyleString = `
-    *, *::before, *::after
-    {-webkit-transition:none!important;-moz-transition:none!important;-o-transition:none!important;-ms-transition:none!important;transition:none!important; will-change: background}`
-    shadowDomStyle.appendChild(document.createTextNode(shadowDomStyleString))
-    mainAppRef.value.appendChild(shadowDomStyle)
-
-    // @ts-expect-error: Transition API
-    const transition = document.startViewTransition(async () => {
-      if (currentAppColorScheme.value === 'light')
-        settings.value.theme = 'dark'
-      else
-        settings.value.theme = 'light'
-      await nextTick()
-    })
-
-    transition.ready.then(() => {
-      const clipPath = [
-      `circle(0px at ${x}px ${y}px)`,
-      `circle(${endRadius}px at ${x}px ${y}px)`,
-      ]
-      const animation = document.documentElement.animate(
-        {
-          clipPath: currentAppColorScheme.value === 'dark'
-            ? [...clipPath].reverse()
-            : clipPath,
-        },
-        {
-          duration: 300,
-          easing: 'ease-in-out',
-          pseudoElement: currentAppColorScheme.value === 'dark'
-            ? '::view-transition-old(root)'
-            : '::view-transition-new(root)',
-        },
-      )
-      animation.addEventListener('finish', () => {
-        document.head.removeChild(style!)
-        mainAppRef.value.removeChild(shadowDomStyle!)
-      }, { once: true })
-    })
-  }
-}
 
 function toggleDockHide(hide: boolean) {
   if (settings.value.autoHideDock)
@@ -171,7 +83,7 @@ function toggleDockHide(hide: boolean) {
   >
     <!-- Edge div -->
     <div
-      v-if="settings.autoHideDock"
+      v-if="settings.autoHideDock && hideDock"
       class="dock-edge"
       :class="`dock-edge-${settings.dockPosition}`"
       @mouseenter="toggleDockHide(false)"
@@ -186,32 +98,39 @@ function toggleDockHide(hide: boolean) {
         bottom: settings.dockPosition === 'bottom',
         hide: hideDock,
       }"
-      absolute duration-300 ease-in-out
-      p-2 m-2 bg="$bew-content-1" flex="~ col gap-2 shrink-0"
-      rounded="$bew-radius" border="1px $bew-border-color"
+      style="backdrop-filter: var(--bew-filter-glass-1);"
+      absolute duration-300 ease-in-out transform-gpu
+      p-2 m-2 bg="$bew-content-2 dark:$bew-elevated-1" flex="~ col gap-2 shrink-0"
+      rounded="60px" border="1px $bew-border-color"
       shadow="$bew-shadow-2"
-      backdrop-glass
       @mouseenter="toggleDockHide(false)"
       @mouseleave="toggleDockHide(true)"
     >
-      <template v-for="dockItemVisibility in settings.dockItemVisibilityList" :key="dockItemVisibility.page">
-        <template v-if="dockItemVisibility.visible">
-          <Tooltip :content="currentDockItems.find((item) => item.page === dockItemVisibility.page)?.label as string" :placement="tooltipPlacement">
-            <button
-              class="dock-item"
-              :class="{ active: activatedPage === dockItemVisibility.page }"
-              @click="emit('change-page', dockItemVisibility.page)"
-            >
-              <Icon :icon="currentDockItems.find((item) => item.page === dockItemVisibility.page)?.icon as string" />
-            </button>
-          </Tooltip>
-        </template>
+      <template v-for="dockItem in currentDockItems" :key="dockItem.page">
+        <Tooltip :content="$t(dockItem.i18nKey)" :placement="tooltipPlacement">
+          <button
+            class="dock-item group"
+            :class="{ active: activatedPage === dockItem.page }"
+            @click="emit('change-page', dockItem.page)"
+          >
+            <div
+              v-show="activatedPage !== dockItem.page"
+              :class="dockItem.icon"
+              text-xl
+            />
+            <div
+              v-show="activatedPage === dockItem.page"
+              :class="dockItem.iconActivated"
+              text-xl
+            />
+          </button>
+        </Tooltip>
       </template>
 
       <!-- dividing line -->
       <div class="divider" />
 
-      <Tooltip :content="currentAppColorScheme === 'dark' ? $t('dock.dark_mode') : $t('dock.light_mode')" :placement="tooltipPlacement">
+      <Tooltip :content="isDark ? $t('dock.dark_mode') : $t('dock.light_mode')" :placement="tooltipPlacement">
         <button
           class="dock-item"
           @click="toggleDark"
@@ -220,14 +139,14 @@ function toggleDockHide(hide: boolean) {
         >
           <Transition name="fade">
             <div v-show="hoveringDockItem.themeMode" absolute>
-              <line-md:sunny-outline-to-moon-loop-transition v-if="currentAppColorScheme === 'dark'" />
-              <line-md:moon-alt-to-sunny-outline-loop-transition v-else />
+              <div v-if="isDark" i-line-md:sunny-outline-to-moon-loop-transition text-xl />
+              <div v-else i-line-md:moon-alt-to-sunny-outline-loop-transition text-xl />
             </div>
           </Transition>
           <Transition name="fade">
             <div v-show="!hoveringDockItem.themeMode" absolute>
-              <line-md:sunny-outline-to-moon-transition v-if="currentAppColorScheme === 'dark'" />
-              <line-md:moon-to-sunny-outline-transition v-else />
+              <div v-if="isDark" i-line-md:sunny-outline-to-moon-transition text-xl />
+              <div v-else i-line-md:moon-to-sunny-outline-transition text-xl />
             </div>
           </Transition>
         </button>
@@ -235,7 +154,7 @@ function toggleDockHide(hide: boolean) {
 
       <Tooltip :content="$t('dock.settings')" :placement="tooltipPlacement">
         <button class="dock-item" @click="emit('settings-visibility-change')">
-          <mingcute:settings-3-line />
+          <div i-mingcute:settings-3-line text-xl />
         </button>
       </Tooltip>
     </div>
@@ -299,28 +218,32 @@ function toggleDockHide(hide: boolean) {
 }
 
 .dock-item {
-  --shadow: 0 0 30px 4px var(--bew-theme-color-50);
-  --shadow-dark: 0 0 30px 4px rgba(255, 255, 255, 0.6);
-  --shadow-active: 0 0 20px var(--bew-theme-color-50);
-  --shadow-dark-active: 0 0 20px rgba(255, 255, 255, 0.6);
+  --shadow-dark: 0 4px 30px 4px rgba(255, 255, 255, 0.6);
+  --shadow-active: 0 4px 30px var(--bew-theme-color-70);
+  --shadow-dark-active: 0 4px 20px rgba(255, 255, 255, 0.8);
+  --shadow-active-active: 0 4px 20px var(--bew-theme-color-90);
 
-  --at-apply: transform active:scale-90
+  --at-apply: transform active:important-scale-90 hover:scale-110
     md:w-45px w-35px
     md:lh-45px lh-35px
     p-0 flex items-center justify-center
     aspect-square relative
-    leading-0 duration-300
-    rounded-$bew-radius
-    bg-$bew-fill-2 cursor-pointer
-    hover:bg-$bew-theme-color hover:text-white hover:shadow-$shadow
-    active:shadow-$shadow-active dark-active:shadow-$shadow-dark-active
-    dark-hover:bg-white dark-hover:text-black dark-hover:shadow-$shadow-dark;
+    leading-0
+    rounded-60px antialiased
+    bg-$bew-content-1 hover:bg-$bew-fill-2 cursor-pointer
+    dark:bg-$bew-fill-1 dark-hover:bg-$bew-fill-4;
+
+  box-shadow: var(--bew-shadow-edge-glow-1), var(--bew-shadow-1);
+  transition: transform 300ms cubic-bezier(0.34, 2, 0.6, 1), background 300ms ease, color 300ms ease, box-shadow 600ms ease;
+
+  &:hover {
+    box-shadow: var(--bew-shadow-edge-glow-1), 0 0 0 2px var(--bew-fill-2), var(--bew-shadow-2);
+  }
 
   &.active {
-    --at-apply: bg-$bew-theme-color dark-bg-white
-      text-white dark-text-black
-      shadow-$shadow dark:shadow-$shadow-dark
-      active:shadow-$shadow-active dark-active:shadow-$shadow-dark-active;
+    --at-apply: important-bg-$bew-theme-color-auto text-$bew-text-auto
+      shadow-$shadow-active  dark:shadow-$shadow-dark
+      active:shadow-$shadow-active-active dark-active:shadow-$shadow-dark-active;
   }
 
   svg {

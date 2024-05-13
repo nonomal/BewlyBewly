@@ -1,21 +1,40 @@
 <script setup lang="ts">
 import type { Ref } from 'vue'
-import type { TrendingResult, List as VideoItem } from '~/models/video/trending'
+
+import Loading from '~/components/Loading.vue'
+import VideoCard from '~/components/VideoCard/VideoCard.vue'
+import VideoCardSkeleton from '~/components/VideoCard/VideoCardSkeleton.vue'
+import { useApiClient } from '~/composables/api'
+import { useBewlyApp } from '~/composables/useAppProvider'
+import type { GridLayout } from '~/logic'
+import type { List as VideoItem, TrendingResult } from '~/models/video/trending'
+
+const props = defineProps<{
+  gridLayout: GridLayout
+}>()
 
 const emit = defineEmits<{
   (e: 'beforeLoading'): void
   (e: 'afterLoading'): void
 }>()
 
+const gridValue = computed((): string => {
+  if (props.gridLayout === 'adaptive')
+    return '~ 2xl:cols-5 xl:cols-4 lg:cols-3 md:cols-2 gap-5'
+  if (props.gridLayout === 'twoColumns')
+    return '~ cols-1 xl:cols-2 gap-4'
+  return '~ cols-1 gap-4'
+})
+const api = useApiClient()
 const videoList = reactive<VideoItem[]>([])
 const isLoading = ref<boolean>(false)
 const containerRef = ref<HTMLElement>() as Ref<HTMLElement>
 const pn = ref<number>(1)
+const noMoreContent = ref<boolean>(false)
 const { handleReachBottom, handlePageRefresh } = useBewlyApp()
 
 onMounted(async () => {
-  await getTrendingVideos()
-
+  await initData()
   initPageAction()
 })
 
@@ -23,30 +42,43 @@ onActivated(() => {
   initPageAction()
 })
 
+async function initData() {
+  noMoreContent.value = false
+  videoList.length = 0
+  pn.value = 1
+  await getData()
+}
+
+async function getData() {
+  await getTrendingVideos()
+}
+
 function initPageAction() {
   handleReachBottom.value = async () => {
     if (!isLoading.value)
-      await getTrendingVideos()
+      await getData()
   }
 
   handlePageRefresh.value = async () => {
-    videoList.length = 0
-    pn.value = 1
-    await getTrendingVideos()
+    initData()
   }
 }
 
 async function getTrendingVideos() {
+  if (noMoreContent.value)
+    return
+
   emit('beforeLoading')
   isLoading.value = true
   try {
-    const response: TrendingResult = await browser.runtime.sendMessage({
-      contentScriptQuery: 'getPopularVideos',
+    const response: TrendingResult = await api.video.getPopularVideos({
       pn: pn.value++,
       ps: 30,
     })
 
-    if (response.code === 0 && !response.data.no_more) {
+    if (response.code === 0) {
+      noMoreContent.value = response.data.no_more
+
       const resData = [] as VideoItem[]
 
       response.data.list.forEach((item: VideoItem) => {
@@ -68,14 +100,21 @@ async function getTrendingVideos() {
     emit('afterLoading')
   }
 }
+
+defineExpose({ initData })
 </script>
 
 <template>
   <div>
+    <!-- By directly using predefined unocss grid properties, it is possible to dynamically set the grid attribute -->
+    <div hidden grid="~ 2xl:cols-5 xl:cols-4 lg:cols-3 md:cols-2 gap-5" />
+    <div hidden grid="~ cols-1 xl:cols-2 gap-4" />
+    <div hidden grid="~ cols-1 gap-4" />
+
     <div
       ref="containerRef"
       m="b-0 t-0" relative w-full h-full
-      grid="~ cols-1 xl:cols-2 gap-4"
+      :grid="gridValue"
     >
       <VideoCard
         v-for="video in videoList"
@@ -95,13 +134,15 @@ async function getTrendingVideos() {
         :tag="video.rcmd_reason.content"
         :cid="video.cid"
         show-preview
-        horizontal
-        w-full
+        :horizontal="gridLayout !== 'adaptive'"
       />
 
       <!-- skeleton -->
       <template v-if="isLoading">
-        <VideoCardSkeleton v-for="item in 30" :key="item" horizontal />
+        <VideoCardSkeleton
+          v-for="item in 30" :key="item"
+          :horizontal="gridLayout !== 'adaptive'"
+        />
       </template>
     </div>
 

@@ -1,4 +1,5 @@
 import { defineConfig } from 'tsup'
+
 import { isDev, isFirefox } from './scripts/utils'
 
 export default defineConfig(() => ({
@@ -15,6 +16,7 @@ export default defineConfig(() => ({
   define: {
     '__DEV__': JSON.stringify(isDev),
     'process.env.NODE_ENV': JSON.stringify(isDev ? 'development' : 'production'),
+    'process.env.FIREFOX': isFirefox ? 'true' : 'false',
   },
   platform: 'browser',
   minifyWhitespace: !isDev,
