@@ -3,6 +3,7 @@ interface Props {
   type?: | 'default'
     | 'primary'
     | 'secondary'
+    | 'tertiary'
     | 'info'
     | 'success'
     | 'warning'
@@ -51,8 +52,8 @@ function handleClick(evt: MouseEvent) {
 
 <style lang="scss" scoped>
 .b-button {
-  --b-button-color: var(--bew-content-solid-1);
-  --b-button-color-hover: var(--bew-content-solid-1-hover);
+  --b-button-color: var(--bew-content-solid);
+  --b-button-color-hover: var(--bew-content-solid-hover);
   --b-button-text-color: var(--bew-text-1);
   --b-button-radius: var(--bew-radius);
   --b-button-padding: 14px;
@@ -66,19 +67,19 @@ function handleClick(evt: MouseEvent) {
   --b-button-shadow-hover: var(--b-button-shadow);
   --b-button-shadow-active: var(--b-button-shadow);
 
-  --at-apply: bg-$b-button-color hover:bg-$b-button-color-hover box-border
-    rounded-$b-button-radius p-x-$b-button-padding transform-gpu active:scale-95
-    duration-300 flex items-center gap-2 text-size-$b-button-font-size
-    text-$b-button-text-color lh-$b-button-height h-$b-button-height
-    border-solid border-width-$b-button-border-width border-$b-button-border-color
-    shadow-$b-button-shadow hover:shadow-$b-button-shadow-hover active:shadow-$b-button-shadow-active;
+  --uno: "bg-$b-button-color hover:bg-$b-button-color-hover box-border";
+  --uno: "rounded-$b-button-radius p-x-$b-button-padding transform-gpu active:scale-95";
+  --uno: "duration-300 flex items-center gap-2 text-size-$b-button-font-size";
+  --uno: "text-$b-button-text-color lh-$b-button-height h-$b-button-height";
+  --uno: "border-solid border-width-$b-button-border-width border-$b-button-border-color";
+  --uno: "shadow-$b-button-shadow hover:shadow-$b-button-shadow-hover active:shadow-$b-button-shadow-active";
 
-    & svg {
-      --at-apply: text-size-$b-button-icon-size
-    }
-
-  &--type-default {
+  & svg {
+    --uno: "text-size-$b-button-icon-size";
   }
+
+  // &--type-default {
+  // }
 
   &--type-primary {
     --b-button-color: var(--bew-theme-color);
@@ -92,9 +93,15 @@ function handleClick(evt: MouseEvent) {
     --b-button-text-color: var(--bew-text-1);
   }
 
+  &--type-tertiary {
+    --b-button-color: transparent;
+    --b-button-color-hover: var(--bew-fill-2);
+    --b-button-text-color: var(--bew-text-1);
+  }
+
   &--type-error {
     --b-button-color: var(--bew-error-color);
-    --b-button-color-hover: var(--bew-error-color)
+    --b-button-color-hover: var(--bew-error-color);
     --b-button-text-color: white;
   }
 
@@ -113,11 +120,11 @@ function handleClick(evt: MouseEvent) {
   }
 
   &--custom-color {
-    --at-apply: hover:opacity-80;
+    --uno: "hover:opacity-70";
   }
 
   &--strong {
-    --at-apply: fw-800;
+    --uno: "fw-800";
   }
 }
 </style>

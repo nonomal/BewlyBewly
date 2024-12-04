@@ -2,13 +2,14 @@
 import type { Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import browser from 'webextension-polyfill'
-import type { AnimeTimeTableItem } from '../types'
+
+import HorizontalScrollView from '~/components/HorizontalScrollView.vue'
+import type { Result as TimetableItem, TimetableResult } from '~/models/anime/timeTable'
+import api from '~/utils/api'
 import { removeHttpFromUrl } from '~/utils/main'
-import type { Result as TimetableItem, TimetableResult } from '~/models/apiModels/anime/timetable'
 
 const { t } = useI18n()
-
-const animeTimeTable = reactive<AnimeTimeTableItem[]>([])
+const animeTimeTable = reactive<TimetableItem[]>([])
 const animeTimeTableWrap = ref<HTMLElement>() as Ref<HTMLElement>
 
 const daysOfTheWeekList = computed(() => {
@@ -27,17 +28,21 @@ onMounted(() => {
   getAnimeTimeTable()
 })
 
+function refreshAnimeTimeTable() {
+  animeTimeTable.length = 0
+  getAnimeTimeTable()
+}
+
 function getAnimeTimeTable() {
-  browser.runtime
-    .sendMessage({
-      contentScriptQuery: 'getAnimeTimeTable',
-    })
+  api.anime.getAnimeTimeTable()
     .then((res: TimetableResult) => {
       const { code, result } = res
       if (code === 0)
         Object.assign(animeTimeTable, result as TimetableItem[])
     })
 }
+
+defineExpose({ refreshAnimeTimeTable })
 </script>
 
 <template>

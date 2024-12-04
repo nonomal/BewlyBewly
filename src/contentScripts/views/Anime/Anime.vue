@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import AnimeTimeTable from './components/AnimeTimeTable.vue'
-import { getUserID, openLinkToNewTab } from '~/utils/main'
-import { numFormatter } from '~/utils/dataFormatter'
-import emitter from '~/utils/mitt'
-import type { List as WatchListItem, WatchListResult } from '~/models/anime/watchList'
+import { useBewlyApp } from '~/composables/useAppProvider'
 import type { List as PopularAnimeItem, PopularAnimeResult } from '~/models/anime/popular'
 import type { ItemSubItem as RecommendationItem, RecommendationResult } from '~/models/anime/recommendation'
+import type { List as WatchListItem, WatchListResult } from '~/models/anime/watchList'
+import api from '~/utils/api'
+import { numFormatter } from '~/utils/dataFormatter'
+import { getUserID, openLinkToNewTab } from '~/utils/main'
+
+import AnimeTimeTable from './components/AnimeTimeTable.vue'
 
 const animeWatchList = reactive<WatchListItem[]>([])
 const recommendAnimeList = reactive<RecommendationItem[]>([])
@@ -15,32 +17,56 @@ const isLoadingAnimeWatchList = ref<boolean>()
 const isLoadingPopularAnime = ref<boolean>()
 const isLoadingRecommendAnime = ref<boolean>()
 const activatedSeasonId = ref<number>()
+const noMoreContent = ref<boolean>()
+const animeTimeTableRef = ref()
+const { handleReachBottom, handlePageRefresh } = useBewlyApp()
+
+const isLoading = computed(() => {
+  return isLoadingAnimeWatchList.value || isLoadingPopularAnime.value || isLoadingRecommendAnime.value
+})
 
 onMounted(() => {
   getAnimeWatchList()
   getPopularAnimeList()
   getRecommendAnimeList()
 
-  emitter.off('reachBottom')
-  emitter.on('reachBottom', () => {
-    if (!isLoadingRecommendAnime.value)
-      getRecommendAnimeList()
-  })
+  initPageAction()
 })
 
-onUnmounted(() => {
-  emitter.off('reachBottom')
-})
+function initPageAction() {
+  handleReachBottom.value = () => {
+    if (isLoadingRecommendAnime.value)
+      return
+    if (noMoreContent.value)
+      return
+
+    getRecommendAnimeList()
+  }
+  handlePageRefresh.value = () => {
+    if (isLoading.value)
+      return
+
+    animeWatchList.length = 0
+    recommendAnimeList.length = 0
+    popularAnimeList.length = 0
+    cursor.value = 0
+    noMoreContent.value = false
+
+    getAnimeWatchList()
+    getPopularAnimeList()
+    getRecommendAnimeList()
+    animeTimeTableRef.value?.refreshAnimeTimeTable()
+  }
+}
 
 function getAnimeWatchList() {
   isLoadingAnimeWatchList.value = true
-  browser.runtime
-    .sendMessage({
-      contentScriptQuery: 'getAnimeWatchList',
-      vmid: getUserID() ?? 0,
-      pn: 1,
-      ps: 30,
-    })
+  api.anime.getAnimeWatchList({
+    vmid: getUserID() ?? 0,
+    pn: 1,
+    follow_status: 2,
+    ps: 30,
+  })
     .then((response: WatchListResult) => {
       const {
         code,
@@ -57,11 +83,9 @@ function getAnimeWatchList() {
 
 function getRecommendAnimeList() {
   isLoadingRecommendAnime.value = true
-  browser.runtime
-    .sendMessage({
-      contentScriptQuery: 'getRecommendAnimeList',
-      coursor: cursor.value,
-    })
+  api.anime.getRecommendAnimeList({
+    coursor: cursor.value,
+  })
     .then((response: RecommendationResult) => {
       const {
         code,
@@ -70,10 +94,13 @@ function getRecommendAnimeList() {
       if (code === 0 && has_next) {
         if (recommendAnimeList.length === 0)
           Object.assign(recommendAnimeList, items[0].sub_items as RecommendationItem[])
-        else recommendAnimeList.push(...items[0].sub_items)
+        else
+          recommendAnimeList.push(...items[0].sub_items)
 
         cursor.value = coursor
       }
+      if (code === 0 && !has_next)
+        noMoreContent.value = true
     })
     .finally(() => {
       isLoadingRecommendAnime.value = false
@@ -82,10 +109,7 @@ function getRecommendAnimeList() {
 
 function getPopularAnimeList() {
   isLoadingPopularAnime.value = true
-  browser.runtime
-    .sendMessage({
-      contentScriptQuery: 'getPopularAnimeList',
-    })
+  api.anime.getPopularAnimeList()
     .then((response: PopularAnimeResult) => {
       const {
         code,
@@ -102,10 +126,6 @@ function getPopularAnimeList() {
 <template>
   <div>
     <div>
-      <!-- <section mb-8>
-        <PopularAnimeCarousel />
-      </section> -->
-
       <!-- Your Watchlist -->
       <section v-if="getUserID()" class="anime-section">
         <div flex justify-between items-center mb-6>
@@ -125,32 +145,41 @@ function getPopularAnimeList() {
 
         <HorizontalScrollView w="[calc(100%+1.5rem)]">
           <div w-full flex>
-            <template v-if="isLoadingAnimeWatchList">
-              <LongCoverCardSkeleton
-                v-for="item in 6" :key="item"
-                w="2xl:[calc(100%/6-1.5rem)] xl:[calc(100%/5-1.5rem)] lg:[calc(100%/4-1.5rem)] md:[calc(100%/3-1.5rem)] sm:[calc(100%/2-1.5rem)] [calc(100%-1.5rem)]"
-                last:w="2xl:1/6 xl:1/5 lg:1/4 md:1/3 sm:1/2 full"
-                shrink-0
-                m="r-6"
-                last:pr-6
-              />
-            </template>
-            <LongCoverCard
-              v-for="item in animeWatchList"
-              :key="item.short_url"
-              :url="item.url"
-              :cover="item.cover"
-              :title="item.title"
-              :capsule-text="item.is_finish
-                ? $t('anime.total_episodes', { ep: item.total_count })
-                : $t('anime.update_to_n_episodes', {
-                  ep: item.total_count,
-                })"
-              :desc="item.progress !== '' ? item.progress : $t('anime.havent_seen')"
+            <BangumiCardSkeleton
+              v-for="item in 6"
+              v-show="isLoadingAnimeWatchList" :key="item"
               w="2xl:[calc(100%/6-1.5rem)] xl:[calc(100%/5-1.5rem)] lg:[calc(100%/4-1.5rem)] md:[calc(100%/3-1.5rem)] sm:[calc(100%/2-1.5rem)] [calc(100%-1.5rem)]"
               last:w="2xl:1/6 xl:1/5 lg:1/4 md:1/3 sm:1/2 full"
               shrink-0
-              m="r-6"
+              mr-6 important-mb-0
+              last:pr-6
+            />
+            <BangumiCard
+              v-for="item in animeWatchList"
+              :key="item.short_url"
+              :bangumi="{
+                url: item.url,
+                cover: item.cover,
+                coverHover: item?.horizontal_cover_16_9,
+                title: item.title,
+                desc: item.progress !== '' ? item.progress : $t('anime.havent_seen'),
+                evaluate: item.evaluate,
+                tags: item.styles,
+                capsuleText: item.is_finish
+                  ? $t('anime.total_episodes', { ep: item.total_count })
+                  : $t('anime.update_to_n_episodes', {
+                    ep: item.formal_ep_count,
+                  }),
+                badge: {
+                  text: item.badge_info.text || '',
+                  bgColor: item.badge_info.bg_color || '',
+                  bgColorDark: item.badge_info.bg_color_night || '',
+                },
+              }"
+              w="2xl:[calc(100%/6-1.5rem)] xl:[calc(100%/5-1.5rem)] lg:[calc(100%/4-1.5rem)] md:[calc(100%/3-1.5rem)] sm:[calc(100%/2-1.5rem)] [calc(100%-1.5rem)]"
+              last:w="2xl:1/6 xl:1/5 lg:1/4 md:1/3 sm:1/2 full"
+              shrink-0
+              mr-6 important-mb-0
               last:pr-6
             />
           </div>
@@ -176,30 +205,36 @@ function getPopularAnimeList() {
 
         <HorizontalScrollView w="[calc(100%+1.5rem)]">
           <div w-full flex>
-            <template v-if="isLoadingPopularAnime">
-              <LongCoverCardSkeleton
-                v-for="item in 6" :key="item"
-                w="2xl:[calc(100%/6-1.5rem)] xl:[calc(100%/5-1.5rem)] lg:[calc(100%/4-1.5rem)] md:[calc(100%/3-1.5rem)] sm:[calc(100%/2-1.5rem)] [calc(100%-1.5rem)]"
-                last:w="2xl:1/6 xl:1/5 lg:1/4 md:1/3 sm:1/2 full"
-                shrink-0
-                m="r-6"
-                last:pr-6
-              />
-            </template>
-            <LongCoverCard
+            <BangumiCardSkeleton
+              v-for="item in 6"
+              v-show="isLoadingPopularAnime" :key="item"
+              w="2xl:[calc(100%/6-1.5rem)] xl:[calc(100%/5-1.5rem)] lg:[calc(100%/4-1.5rem)] md:[calc(100%/3-1.5rem)] sm:[calc(100%/2-1.5rem)] [calc(100%-1.5rem)]"
+              last:w="2xl:1/6 xl:1/5 lg:1/4 md:1/3 sm:1/2 full"
+              shrink-0
+              mr-6 important-mb-0
+              last:pr-6
+            />
+            <BangumiCard
               v-for="item in popularAnimeList"
               :key="item.url"
               w="2xl:[calc(100%/6-1.5rem)] xl:[calc(100%/5-1.5rem)] lg:[calc(100%/4-1.5rem)] md:[calc(100%/3-1.5rem)] sm:[calc(100%/2-1.5rem)] [calc(100%-1.5rem)]"
               last:w="2xl:1/6 xl:1/5 lg:1/4 md:1/3 sm:1/2 full"
               shrink-0
-              m="r-6"
+              mr-6 important-mb-0
               last:pr-6
-              :url="item.url"
-              :cover="item.cover"
-              :title="item.title"
-              :desc="$t('anime.follow', { num: numFormatter(item.stat.series_follow) })"
-              :capsule-text="item.rating.replace('分', '')"
-              :rank="item.rank"
+              :bangumi="{
+                url: item.url,
+                cover: item.cover,
+                title: item.title,
+                desc: $t('anime.follow', { num: numFormatter(item.stat.series_follow) }),
+                capsuleText: item.rating.replace('分', ''),
+                rank: item.rank,
+                badge: {
+                  text: item.badge_info.text || '',
+                  bgColor: item.badge_info.bg_color || '',
+                  bgColorDark: item.badge_info.bg_color_night || '',
+                },
+              }"
             />
           </div>
         </HorizontalScrollView>
@@ -213,7 +248,7 @@ function getPopularAnimeList() {
           </h3>
         </div>
 
-        <AnimeTimeTable w="[calc(100%+1.5rem)]" />
+        <AnimeTimeTable ref="animeTimeTableRef" w="[calc(100%+1.5rem)]" />
       </section>
 
       <!-- Recommended for you -->
@@ -222,37 +257,43 @@ function getPopularAnimeList() {
           {{ $t('anime.recommended_for_you') }}
         </h3>
         <div grid="~ 2xl:cols-6 xl:cols-5 lg:cols-4 md:cols-3 sm:cols-2 cols-1 gap-6">
-          <LongCoverCard
+          <BangumiCard
             v-for="item in recommendAnimeList"
             :key="item.episode_id"
-            :url="item.link ?? ''"
-            :cover="item.cover"
-            :cover-hover="item?.hover?.img"
-            :tags="item?.hover?.text"
-            :title="item.title"
-            :desc="item.sub_title"
-            :capsule-text="item.rating"
-            mb-10
+            :bangumi="{
+              url: item.link ?? '',
+              cover: item.cover,
+              coverHover: item?.hover?.img,
+              tags: item?.hover?.text,
+              title: item.title,
+              desc: item.sub_title,
+              evaluate: item.evaluate,
+              capsuleText: item.rating,
+            }"
             @mouseenter="activatedSeasonId = item.season_id"
             @mouseleave="activatedSeasonId = 0"
           />
 
-          <template v-if="isLoadingRecommendAnime">
-            <LongCoverCardSkeleton
-              v-for="item in 30" :key="item"
-              mb-10
-            />
-          </template>
+          <BangumiCardSkeleton
+            v-for="item in 30"
+            v-show="isLoadingRecommendAnime"
+            :key="item"
+            important-mb-0
+          />
         </div>
       </section>
     </div>
+
+    <!-- no more content -->
+    <Empty v-if="noMoreContent" class="pb-4" :description="$t('common.no_more_content')" />
+
     <!-- loading -->
-    <loading v-if="isLoadingRecommendAnime && recommendAnimeList.length !== 0" m="-t-4" />
+    <Loading v-if="isLoadingRecommendAnime && recommendAnimeList.length !== 0" m="-t-4" />
   </div>
 </template>
 
 <style lang="scss" scoped>
 .anime-section {
-  --at-apply: mb-8 mt-14 first:mt-0;
+  --uno: "mb-8 mt-14 first:mt-0";
 }
 </style>

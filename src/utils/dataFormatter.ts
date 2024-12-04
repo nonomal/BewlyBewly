@@ -1,10 +1,11 @@
-import { LanguageType } from './../enums/appEnums'
 import { settings } from '~/logic'
 import { i18n } from '~/utils/i18n'
 
+import { LanguageType } from './../enums/appEnums'
+
 export const { t } = i18n.global
 
-export function numFormatter(num: number) {
+export function numFormatter(num: number | string): string {
   const digits = 1 // specify number of digits after decimal
   let lookup
 
@@ -32,7 +33,15 @@ export function numFormatter(num: number) {
       { value: 1e9, symbol: 'B' },
     ]
   }
-  const rx = /\.0+$|(\.[0-9]*[1-9])0+$/
+  const rx = /\.0+$|(\.\d*[1-9])0+$/
+  if (typeof num === 'string') {
+    if (num.includes('萬') || num.includes('万')) {
+      num = (Number(num.replaceAll('萬', '').replaceAll('万', '')) || 0) * 10000
+    }
+    else {
+      num = Number(num)
+    }
+  }
   const item = lookup.slice().reverse().find((item) => {
     return num >= item.value
   })

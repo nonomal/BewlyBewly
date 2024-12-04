@@ -1,9 +1,11 @@
 import { dirname, join } from 'node:path'
-import type { HMRPayload, PluginOption } from 'vite'
-import fs from 'fs-extra'
-import { isFirefox, isWin, r } from './scripts/utils'
 
-const targetDir = r(isFirefox ? 'extension-firefox' : 'extension')
+import fs from 'fs-extra'
+import type { HMRPayload, PluginOption } from 'vite'
+
+import { isFirefox, isSafari, isWin, r } from './scripts/utils'
+
+const targetDir = r(isFirefox ? 'extension-firefox' : isSafari ? 'extension-safari' : 'extension')
 
 export function MV3Hmr(): PluginOption {
   return {
@@ -95,8 +97,8 @@ function normalizeFsUrl(url: string, type: string) {
     normalizeViteUrl(url, type)
       .replace(/^\//, '')
       // `\0plugin-vue:export-helper` EXPORT_HELPER_ID
-      // eslint-disable-next-line no-control-regex
-      .replace(/\u0000/g, '__x00__')
+
+      .replace(/\0/g, '__x00__')
       // filenames starting with "_" are reserved for use by the system.
       .replace(/^_+/, match => '~'.repeat(match.length)),
   )

@@ -16,8 +16,10 @@
     ],
     "strict": true,
     "noUnusedLocals": true,
+    "noEmit": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
     "skipLibCheck": true
   },
   "exclude": ["dist", "node_modules"]

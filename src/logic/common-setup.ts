@@ -1,10 +1,12 @@
-import type { App } from 'vue'
-import { getCurrentContext } from 'webext-bridge'
-import Toast, { POSITION } from 'vue-toastification'
-import { createPinia } from 'pinia'
-import { i18n } from '~/utils/i18n'
 import 'vue-toastification/dist/index.css'
-import 'overlayscrollbars/overlayscrollbars.css'
+
+import { createPinia } from 'pinia'
+import type { App } from 'vue'
+import Toast, { POSITION } from 'vue-toastification'
+import { getCurrentContext } from 'webext-bridge'
+
+import components from '~/components'
+import { i18n } from '~/utils/i18n'
 
 const pinia = createPinia()
 
@@ -26,9 +28,8 @@ export async function setupApp(app: App) {
       transition: 'Vue-Toastification__fade',
       maxToasts: 20,
       newestOnTop: true,
-      position: POSITION.TOP_CENTER,
+      position: POSITION.TOP_RIGHT,
     })
+  app.use(components)
   app.use(pinia)
-  const { OverlayScrollbarsComponent } = await import('overlayscrollbars-vue')
-  app.component('OverlayScrollbarsComponent', OverlayScrollbarsComponent)
 }
