@@ -2,86 +2,68 @@
 import { useDateFormat } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 
-import { getCSRF, openLinkToNewTab, removeHttpFromUrl } from '~/utils/main'
+import { useBewlyApp } from '~/composables/useAppProvider'
+import type { HistoryResult, List as HistoryItem } from '~/models/history/history'
+import { Business } from '~/models/history/history'
+import type { HistorySearchResult, List as HistorySearchItem } from '~/models/video/historySearch'
+import api from '~/utils/api'
 import { calcCurrentTime } from '~/utils/dataFormatter'
-import emitter from '~/utils/mitt'
-import { Business } from '~/models/video/history'
-import type { List as HistoryItem, HistoryResult } from '~/models/video/history'
-import type { List as HistorySearchItem, HistorySearchResult } from '~/models/video/historySearch'
+import { getCSRF, removeHttpFromUrl } from '~/utils/main'
 
 const { t } = useI18n()
 
 const isLoading = ref<boolean>()
-const noMoreContent = ref<boolean>()
+const noMoreContent = ref<boolean>(false)
 const historyList = reactive<Array<HistoryItem>>([])
 const currentPageNum = ref<number>(1)
 const keyword = ref<string>()
 const historyStatus = ref<boolean>()
+const { handlePageRefresh, handleReachBottom, haveScrollbar } = useBewlyApp()
 
 const HistoryBusiness = computed(() => {
   return Business
 })
 
-watch(
-  () => keyword.value,
-  (newValue, oldValue) => {
-    if (newValue === oldValue)
-      return
-    emitter.on('reachBottom', () => {
-      if (isLoading.value)
-        return
-
-      if (!noMoreContent.value) {
-        if (keyword.value)
-          searchHistoryList()
-        else getHistoryList()
-      }
-    })
-  },
-)
-
 onMounted(() => {
   getHistoryList()
   getHistoryPauseStatus()
 
-  emitter.off('reachBottom')
-  emitter.on('reachBottom', () => {
+  initPageAction()
+})
+
+function initPageAction() {
+  handleReachBottom.value = () => {
     if (isLoading.value)
       return
+    if (noMoreContent.value)
+      return
 
-    if (!noMoreContent.value) {
-      if (keyword.value)
-        searchHistoryList()
-      else getHistoryList()
-    }
-  })
+    if (keyword.value)
+      searchHistoryList()
+    else
+      getHistoryList()
+  }
 
-  emitter.off('pageRefresh')
-  emitter.on('pageRefresh', async () => {
+  handlePageRefresh.value = () => {
     historyList.length = 0
+    currentPageNum.value = 1
+    noMoreContent.value = false
     getHistoryList()
-  })
-})
-
-onUnmounted(() => {
-  emitter.off('reachBottom')
-  emitter.off('pageRefresh')
-})
+  }
+}
 
 /**
  * Get history list
  */
 function getHistoryList() {
   isLoading.value = true
-  browser.runtime
-    .sendMessage({
-      contentScriptQuery: 'getHistoryList',
-      type: 'all',
-      viewAt:
+  api.history.getHistoryList({
+    type: 'all',
+    view_at:
         historyList.length > 0
           ? historyList[historyList.length - 1].view_at
           : 0,
-    })
+  })
     .then((res: HistoryResult) => {
       if (res.code === 0) {
         if (Array.isArray(res.data.list) && res.data.list.length > 0)
@@ -94,19 +76,22 @@ function getHistoryList() {
         }
 
         noMoreContent.value = false
+
+        if (!haveScrollbar() && !noMoreContent.value) {
+          getHistoryList()
+        }
       }
+    }).finally(() => {
       isLoading.value = false
     })
 }
 
 function searchHistoryList() {
   isLoading.value = true
-  browser.runtime
-    .sendMessage({
-      contentScriptQuery: 'searchHistoryList',
-      pn: currentPageNum.value++,
-      keyword: keyword.value,
-    })
+  api.history.searchHistoryList({
+    pn: currentPageNum.value++,
+    keyword: keyword.value,
+  })
     .then((res: HistorySearchResult) => {
       if (res.code === 0) {
         if (historyList.length !== 0 && res.data.list.length < 20) {
@@ -121,6 +106,7 @@ function searchHistoryList() {
 
         noMoreContent.value = false
       }
+    }).finally(() => {
       isLoading.value = false
     })
 }
@@ -128,18 +114,17 @@ function searchHistoryList() {
 function handleSearch() {
   historyList.length = 0
   currentPageNum.value = 1
+  noMoreContent.value = false
   if (keyword.value)
     searchHistoryList()
   else getHistoryList()
 }
 
 function deleteHistoryItem(index: number, historyItem: HistoryItem) {
-  browser.runtime
-    .sendMessage({
-      contentScriptQuery: 'deleteHistoryItem',
-      kid: `${historyItem.history.business}_${historyItem.history.oid}`,
-      csrf: getCSRF(),
-    })
+  api.history.deleteHistoryItem({
+    kid: `${historyItem.history.business}_${historyItem.history.oid}`,
+    csrf: getCSRF(),
+  })
     .then((res) => {
       if (res.code === 0)
         historyList.splice(index, 1)
@@ -151,25 +136,26 @@ function deleteHistoryItem(index: number, historyItem: HistoryItem) {
  * @param item history item
  * @return {string} url
  */
-function getHistoryUrl(item: HistoryItem) {
-  // anime
-  if (item.history.business === 'pgc') {
-    return removeHttpFromUrl(item.uri)
-  }
-  // video
-  else if (item.history.business === Business.ARCHIVE) {
+function getHistoryUrl(item: HistoryItem): string {
+  if (item.uri)
+    return item.uri
+
+  // Video
+  if (item.history.business === Business.ARCHIVE) {
     if (item?.videos && item.videos > 0)
-      return `//www.bilibili.com/video/${item.history.bvid}?p=${item.history.page}`
-    return item.history.bvid
+      return `https://www.bilibili.com/video/${item.history.bvid}?p=${item.history.page}`
+    return `https://www.bilibili.com/video/${item.history.bvid}`
   }
-  else if (item.history.business === 'live') {
-    return `//live.bilibili.com/${item.history.oid}`
+  // Live
+  else if (item.history.business === Business.LIVE) {
+    return `https://live.bilibili.com/${item.history.oid}`
   }
-  else if (item.history.business === 'article' || item.history.business === 'article-list') {
+  // Article
+  else if (item.history.business === Business.ARTICLE || item.history.business === Business.ARTICLE_LIST) {
     if (item.history.cid === 0)
-      return `//www.bilibili.com/read/cv${item.history.oid}`
+      return `https://www.bilibili.com/read/cv${item.history.oid}`
     else
-      return `//www.bilibili.com/read/cv${item.history.cid}`
+      return `https://www.bilibili.com/read/cv${item.history.cid}`
   }
   return ''
 }
@@ -184,10 +170,7 @@ function getHistoryItemCover(item: HistoryItem) {
 }
 
 function getHistoryPauseStatus() {
-  browser.runtime
-    .sendMessage({
-      contentScriptQuery: 'getHistoryPauseStatus',
-    })
+  api.history.getHistoryPauseStatus()
     .then((res) => {
       if (res.code === 0)
         historyStatus.value = res.data
@@ -195,12 +178,10 @@ function getHistoryPauseStatus() {
 }
 
 function setHistoryPauseStatus(isPause: boolean) {
-  browser.runtime
-    .sendMessage({
-      contentScriptQuery: 'setHistoryPauseStatus',
-      csrf: getCSRF(),
-      switch: isPause,
-    })
+  api.history.setHistoryPauseStatus({
+    csrf: getCSRF(),
+    switch: isPause,
+  })
     .then((res) => {
       if (res.code === 0)
         getHistoryPauseStatus()
@@ -208,11 +189,9 @@ function setHistoryPauseStatus(isPause: boolean) {
 }
 
 function clearAllHistory() {
-  browser.runtime
-    .sendMessage({
-      contentScriptQuery: 'clearAllHistory',
-      csrf: getCSRF(),
-    })
+  api.history.clearAllHistory({
+    csrf: getCSRF(),
+  })
     .then((res) => {
       if (res.code === 0)
         historyList.length = 0
@@ -220,7 +199,6 @@ function clearAllHistory() {
 }
 
 function handleClearAllWatchHistory() {
-  // eslint-disable-next-line no-alert
   const result = confirm(
     t('history.clear_all_watch_history_confirm'),
   )
@@ -229,7 +207,6 @@ function handleClearAllWatchHistory() {
 }
 
 function handlePauseWatchHistory() {
-  // eslint-disable-next-line no-alert
   const result = confirm(
     t('history.pause_watch_history_confirm'),
   )
@@ -238,7 +215,6 @@ function handlePauseWatchHistory() {
 }
 
 function handleTurnOnWatchHistory() {
-  // eslint-disable-next-line no-alert
   const result = confirm(
     t('history.turn_on_watch_history_confirm'),
   )
@@ -258,29 +234,29 @@ function jumpToLoginPage() {
         {{ $t('history.title') }}
       </h3>
       <!-- historyList -->
-      <transition-group name="list">
-        <a
+      <TransitionGroup name="list">
+        <ALink
           v-for="(historyItem, index) in historyList"
           :key="historyItem.kid"
+          type="videoCard"
+          :href="getHistoryUrl(historyItem)"
           block
           class="group"
           flex
           cursor-pointer
-          @click="openLinkToNewTab(`${getHistoryUrl(historyItem)}`)"
         >
           <!-- time slot -->
           <div
-            mr-8
-            px-4
+            mr-8 px-4
             b-l="~ 2px dashed $bew-fill-2"
             group-hover:b-l="$bew-theme-color-40"
-            items-center
-            justify-center
             shrink-0
             relative
             duration-300
-            display="none xl:flex"
+            flex="important-xl:~ items-center justify-center"
+            hidden
           >
+            <!-- hidden lg:flex -->
             <!-- Dot -->
             <i
               pos="absolute left--1px"
@@ -310,19 +286,17 @@ function jumpToLoginPage() {
 
           <section
             rounded="$bew-radius"
-            flex="~ gap-6 col md:col lg:row"
-            item-start
+            flex="~ gap-6 col md:col lg:row items-start"
             relative
             group-hover:bg="$bew-fill-2"
-            duration-300
-            w-full
-            p-2
-            m-1
+            duration-300 w-full
+            p-2 m-1
+            content-visibility-auto
           >
             <!-- Cover -->
             <div
               pos="relative"
-              bg="$bew-fill-5"
+              bg="$bew-skeleton"
               w="full md:full lg:250px"
               flex="shrink-0"
               rounded="$bew-radius"
@@ -394,26 +368,24 @@ function jumpToLoginPage() {
             </div>
 
             <!-- Description -->
-            <div flex justify-between w-full>
+            <div flex justify-between w-full h-full>
               <div flex="~ col">
-                <a :href="`${getHistoryUrl(historyItem)}`" target="_blank" @click.stop="">
+                <a
+                  :href="`${getHistoryUrl(historyItem)}`" target="_blank"
+                  :title="historyItem.show_title ? historyItem.show_title : historyItem.title"
+                >
                   <h3
                     class="keep-two-lines"
                     overflow="hidden"
                     text="lg overflow-ellipsis"
                   >
-                    {{
-                      historyItem.show_title
-                        ? historyItem.show_title
-                        : historyItem.title
-                    }}
+                    {{ historyItem.show_title ? historyItem.show_title : historyItem.title }}
                   </h3>
                 </a>
                 <a
                   un-text="$bew-text-2 sm"
                   m="t-4 b-2"
-                  flex="~"
-                  items-center
+                  flex="~ items-center"
                   cursor-pointer
                   w-fit
                   rounded="$bew-radius"
@@ -421,13 +393,7 @@ function jumpToLoginPage() {
                   hover:bg="$bew-theme-color-10"
                   duration-300
                   pr-2
-                  :href="
-                    historyItem.author_mid
-                      ? `https://space.bilibili.com/${historyItem.author_mid}`
-                      : historyItem.uri
-                  "
-                  target="_blank"
-                  @click.stop=""
+                  :href="historyItem.author_mid ? `https://space.bilibili.com/${historyItem.author_mid}` : historyItem.uri" target="_blank"
                 >
                   <img
                     :src="
@@ -454,16 +420,34 @@ function jumpToLoginPage() {
                     items-center
                     gap-1
                     m="l-2"
-                  ><tabler:live-photo />
+                  ><div i-tabler:live-photo />
                     Live
                   </span>
                 </a>
-                <p display="block xl:none" text="$bew-text-3 sm" mt-auto mb-2>
-                  {{
-                    useDateFormat(historyItem.view_at * 1000, 'YYYY-MM-DD HH:mm:ss')
-                      .value
-                  }}
-                </p>
+                <div
+                  display="xl:none"
+                  flex items-center
+                  text="$bew-text-3 sm"
+                  mt-auto
+                >
+                  <span text-xl mr-2 lh-0>
+                    <i
+                      v-if="historyItem.history.dt === 1 || historyItem.history.dt === 3 || historyItem.history.dt === 5 || historyItem.history.dt === 7"
+                      i-mingcute:cellphone-line
+                    />
+                    <i v-if="historyItem.history.dt === 2" i-mingcute:tv-1-line />
+                    <i
+                      v-if="historyItem.history.dt === 4 || historyItem.history.dt === 6" i-mingcute:pad-line
+                    />
+                    <i v-if="historyItem.history.dt === 33" i-mingcute:tv-2-line />
+                  </span>
+                  <span>
+                    {{
+                      useDateFormat(historyItem.view_at * 1000, 'YYYY-MM-DD HH:mm:ss')
+                        .value
+                    }}
+                  </span>
+                </div>
               </div>
 
               <button
@@ -472,14 +456,18 @@ function jumpToLoginPage() {
                 opacity-0 group-hover:opacity-100
                 p-2
                 duration-300
-                @click.stop="deleteHistoryItem(index, historyItem)"
+                @click.prevent.stop="deleteHistoryItem(index, historyItem)"
               >
-                <tabler:trash />
+                <div i-tabler:trash />
               </button>
             </div>
           </section>
-        </a>
-      </transition-group>
+        </ALink>
+      </TransitionGroup>
+
+      <!-- no more content -->
+      <Empty v-if="noMoreContent" class="py-4" :description="$t('common.no_more_content')" />
+
       <!-- loading -->
       <Transition name="fade">
         <loading
@@ -498,7 +486,7 @@ function jumpToLoginPage() {
           p="x-14px"
           lh-35px h-35px
           rounded="$bew-radius"
-          bg="$bew-content-solid-1"
+          bg="$bew-content-solid"
           shadow="$bew-shadow-1"
           outline-none
           w-full
@@ -512,7 +500,7 @@ function jumpToLoginPage() {
           @click="handleClearAllWatchHistory"
         >
           <template #left>
-            <tabler:trash />
+            <div i-tabler:trash />
           </template>
           {{ $t('history.clear_all_watch_history') }}
         </Button>
@@ -525,7 +513,7 @@ function jumpToLoginPage() {
           @click="handlePauseWatchHistory"
         >
           <template #left>
-            <ph:pause-circle-bold />
+            <div i-ph:pause-circle-bold />
           </template>
           {{ $t('history.pause_watch_history') }}
         </Button>
@@ -538,7 +526,7 @@ function jumpToLoginPage() {
           @click="handleTurnOnWatchHistory"
         >
           <template #left>
-            <ph:play-circle-bold />
+            <div i-ph:play-circle-bold />
           </template>
           {{ $t('history.turn_on_watch_history') }}
         </Button>

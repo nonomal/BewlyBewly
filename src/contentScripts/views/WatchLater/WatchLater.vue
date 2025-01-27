@@ -1,75 +1,115 @@
 <script setup lang="ts">
 import { useDateFormat } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
-import { getCSRF, openLinkToNewTab, removeHttpFromUrl } from '~/utils/main'
-import { calcCurrentTime } from '~/utils/dataFormatter'
-import emitter from '~/utils/mitt'
+
+import { useBewlyApp } from '~/composables/useAppProvider'
+import { settings } from '~/logic'
 import type { List as VideoItem, WatchLaterResult } from '~/models/video/watchLater'
+import api from '~/utils/api'
+import { calcCurrentTime } from '~/utils/dataFormatter'
+import { getCSRF, openLinkToNewTab, removeHttpFromUrl } from '~/utils/main'
 
 const { t } = useI18n()
+const { openIframeDrawer } = useBewlyApp()
 
 const isLoading = ref<boolean>()
 const noMoreContent = ref<boolean>()
-const watchLaterList = reactive<VideoItem[]>([])
+const allWatchLaterList = ref<VideoItem[]>([])
+const currentWatchLaterList = ref<VideoItem[]>([])
+const watchLaterCount = ref<number>(0)
+const { handlePageRefresh, handleReachBottom, haveScrollbar } = useBewlyApp()
+const pageNum = ref<number>(1)
 
 onMounted(() => {
-  getAllWatchLaterList()
-
-  emitter.off('pageRefresh')
-  emitter.on('pageRefresh', async () => {
-    watchLaterList.length = 0
-    getAllWatchLaterList()
-  })
+  initPageAction()
+  initData()
 })
 
-onUnmounted(() => {
-  emitter.off('pageRefresh')
-})
+async function initData() {
+  isLoading.value = false
+  noMoreContent.value = false
+  allWatchLaterList.value.length = 0
+  currentWatchLaterList.value.length = 0
+  pageNum.value = 1
+  await getAllWatchLaterList()
+  getData()
+}
+
+function getData() {
+  getCurrentWatchLaterList()
+}
+
+function initPageAction() {
+  handlePageRefresh.value = async () => {
+    if (isLoading.value)
+      return
+
+    initData()
+  }
+
+  handleReachBottom.value = async () => {
+    getData()
+  }
+}
 
 /**
  * Get watch later list
  */
-function getAllWatchLaterList() {
+async function getAllWatchLaterList() {
   isLoading.value = true
-  watchLaterList.length = 0
-  browser.runtime
-    .sendMessage({
-      contentScriptQuery: 'getAllWatchLaterList',
-    })
-    .then((res: WatchLaterResult) => {
-      if (res.code === 0)
-        Object.assign(watchLaterList, res.data.list)
+  currentWatchLaterList.value.length = 0
+  try {
+    const res: WatchLaterResult = await api.watchlater.getAllWatchLaterList()
+    if (res.code === 0) {
+      allWatchLaterList.value = res.data.list
+      watchLaterCount.value = allWatchLaterList.value.length
+    }
+  }
+  finally {
+    isLoading.value = false
+  }
+}
 
-      isLoading.value = false
-    })
+function getCurrentWatchLaterList() {
+  const allWatchLaterListCopy = JSON.parse(JSON.stringify(allWatchLaterList.value))
+  const currentList = allWatchLaterListCopy.slice((pageNum.value - 1) * 10, pageNum.value * 10)
+
+  if (currentList.length === 0) {
+    noMoreContent.value = true
+    return
+  }
+  pageNum.value++
+  currentWatchLaterList.value.push(...currentList)
+
+  if (!haveScrollbar() && !noMoreContent.value) {
+    getCurrentWatchLaterList()
+  }
 }
 
 function deleteWatchLaterItem(index: number, aid: number) {
-  browser.runtime
-    .sendMessage({
-      contentScriptQuery: 'removeFromWatchLater',
-      aid,
-      csrf: getCSRF(),
-    })
+  api.watchlater.removeFromWatchLater({
+    aid,
+    csrf: getCSRF(),
+  })
     .then((res) => {
-      if (res.code === 0)
-        watchLaterList.splice(index, 1)
+      if (res.code === 0) {
+        currentWatchLaterList.value.splice(index, 1)
+        watchLaterCount.value--
+      }
     })
 }
 
 function handleClearAllWatchLater() {
-  // eslint-disable-next-line no-alert
   const result = confirm(
     t('watch_later.clear_all_confirm'),
   )
   if (result) {
     isLoading.value = true
-    browser.runtime.sendMessage({
-      contentScriptQuery: 'clearAllWatchLater',
+    api.watchlater.clearAllWatchLater({
       csrf: getCSRF(),
     }).then((res) => {
       if (res.code === 0)
-        getAllWatchLaterList()
+        initData()
     }).finally(() => {
       isLoading.value = false
     })
@@ -77,26 +117,35 @@ function handleClearAllWatchLater() {
 }
 
 function handleRemoveWatchedVideos() {
-  // eslint-disable-next-line no-alert
   const result = confirm(
     t('watch_later.remove_watched_videos_confirm'),
   )
   if (result) {
-    browser.runtime
-      .sendMessage({
-        contentScriptQuery: 'removeFromWatchLater',
-        viewed: true,
-        csrf: getCSRF(),
-      })
+    api.watchlater.removeFromWatchLater({
+      viewed: true,
+      csrf: getCSRF(),
+    })
       .then((res) => {
         if (res.code === 0)
-          getAllWatchLaterList()
+          initData()
       })
   }
 }
 
 function handlePlayAll() {
   openLinkToNewTab('https://www.bilibili.com/list/watchlater')
+}
+
+function handleLinkClick(url: string) {
+  if (settings.value.videoCardLinkOpenMode === 'drawer') {
+    openIframeDrawer(url) // 在抽屉打开
+  }
+  else if (settings.value.videoCardLinkOpenMode === 'currentTab') {
+    window.open(url, '_self') // 在当前标签页打开
+  }
+  else {
+    openLinkToNewTab(url) // 在新标签页打开
+  }
 }
 
 function jumpToLoginPage() {
@@ -108,36 +157,33 @@ function jumpToLoginPage() {
   <div v-if="getCSRF()" flex="~ col md:row lg:row" gap-4>
     <main w="full md:60% lg:70% xl:75%" order="2 md:1 lg:1" mb-6>
       <h3 text="3xl $bew-text-1" font-bold mb-6>
-        {{ t('watch_later.title') }} ({{ watchLaterList.length }})
+        {{ t('watch_later.title') }} ({{ watchLaterCount }})
       </h3>
-      <Empty v-if="watchLaterList.length === 0 && !isLoading" />
+      <Empty v-if="watchLaterCount === 0 && !isLoading" />
       <template v-else>
         <!-- watcher later list -->
-        <transition-group name="list">
-          <a
-            v-for="(item, index) in watchLaterList"
+        <TransitionGroup name="list">
+          <ALink
+            v-for="(item, index) in currentWatchLaterList"
             :key="item.aid"
-            block
+            :href="`https://www.bilibili.com/list/watchlater?bvid=${item.bvid}`"
+            type="videoCard"
             class="group"
-            flex
-            cursor-pointer
-            @click="openLinkToNewTab(`https://www.bilibili.com/list/watchlater?bvid=${item.bvid}`)"
+            flex cursor-pointer
           >
             <section
               rounded="$bew-radius"
-              flex="~ gap-6 col md:col lg:row"
-              item-start
+              flex="~ gap-6 col md:col lg:row items-start"
               relative
               group-hover:bg="$bew-fill-2"
-              duration-300
-              w-full
-              p-2
-              m-1
+              duration-300 w-full
+              p-2 m-1
+              content-visibility-auto
             >
               <!-- Cover -->
               <div
                 pos="relative"
-                bg="$bew-fill-5"
+                bg="$bew-skeleton"
                 w="full md:full lg:250px"
                 flex="shrink-0"
                 rounded="$bew-radius"
@@ -191,14 +237,13 @@ function jumpToLoginPage() {
               </div>
 
               <!-- Description -->
-              <div flex justify-between w-full>
+              <div flex justify-between w-full h-full>
                 <div flex="~ col">
                   <a
                     class="keep-two-lines"
                     overflow="hidden"
                     un-text="lg overflow-ellipsis"
-                    :href="removeHttpFromUrl(`https://www.bilibili.com/list/watchlater?bvid=${item.bvid}`)" target="_blank"
-                    @click.stop=""
+                    @click.stop.prevent="handleLinkClick(`https://www.bilibili.com/list/watchlater?bvid=${item.bvid}`)"
                   >
                     {{ item.title }}
                   </a>
@@ -215,7 +260,7 @@ function jumpToLoginPage() {
                     duration-300
                     pr-2
                     :href="`//space.bilibili.com/${item.owner.mid}`" target="_blank"
-                    @click.stop=""
+                    @click.stop
                   >
                     <img
                       :src="removeHttpFromUrl(`${item.owner.face}@40w_40h_1c`)"
@@ -245,20 +290,19 @@ function jumpToLoginPage() {
                     opacity-0 group-hover:opacity-100
                     p-2
                     duration-300
-                    @click.stop="deleteWatchLaterItem(index, item.aid)"
+                    @click.prevent.stop="deleteWatchLaterItem(index, item.aid)"
                   >
-                    <tabler:trash />
+                    <div i-tabler:trash />
                   </button>
                 </div>
-
               </div>
             </section>
-          </a>
-        </transition-group>
+          </ALink>
+        </TransitionGroup>
         <!-- loading -->
         <Transition name="fade">
           <loading
-            v-if="isLoading && watchLaterList.length !== 0 && !noMoreContent"
+            v-if="isLoading && currentWatchLaterList.length !== 0 && !noMoreContent"
             m="-t-4"
           />
         </Transition>
@@ -267,64 +311,81 @@ function jumpToLoginPage() {
 
     <aside relative w="full md:40% lg:30% xl:25%" order="1 md:2 lg:2">
       <div
-        pos="sticky top-120px" flex="~ col gap-4" justify-start my-10 w-full
-        h="auto md:[calc(100vh-160px)]" p-6
-        rounded="$bew-radius" overflow-hidden bg="$bew-fill-3"
+        pos="sticky top-120px"
+        w-full h="230px md:[calc(100vh-160px)]"
+        my-10
+        rounded="$bew-radius"
+        overflow-hidden
       >
+        <!-- Frosted Glass Cover -->
         <div
-          pos="absolute top-0 left-0" w-full h-full bg-cover bg-center
+          pos="absolute top-0 left-0" w-full h-inherit
           z--1
         >
-          <div absolute w-full h-full style="backdrop-filter: blur(60px) saturate(180%)" bg="$bew-fill-4" />
+          <div
+            absolute w-full h-inherit
+            bg="$bew-fill-4"
+          />
           <img
-            v-if="watchLaterList[0]"
-            :src="removeHttpFromUrl(`${watchLaterList[0].pic}@480w_270h_1c`)"
-            w-full h-full object="cover center"
+            v-if="currentWatchLaterList[0]"
+            :src="removeHttpFromUrl(`${currentWatchLaterList[0].pic}@480w_270h_1c`)"
+            w-full h-full object="cover center" blur-40px
+            relative z--1
           >
         </div>
 
-        <picture
-          rounded="$bew-radius" style="box-shadow: 0 16px 24px -12px rgba(0, 0, 0, .36)"
-          aspect-video mb-4 bg="$bew-fill-2"
+        <!-- Content -->
+        <main
+          pos="absolute top-0 left-0"
+          w-full h-inherit
+          overflow-overlay
+          flex="~ col gap-4 justify-start"
+          p-6
         >
-          <img
-            v-if="watchLaterList[0]" :src="removeHttpFromUrl(`${watchLaterList[0].pic}@480w_270h_1c`)"
-            rounded="$bew-radius" aspect-video w-full
+          <picture
+            class="hidden md:block"
+            rounded="$bew-radius" style="box-shadow: 0 16px 24px -12px rgba(0, 0, 0, .36)"
+            aspect-video mb-4 bg="$bew-skeleton"
           >
-        </picture>
+            <img
+              v-if="currentWatchLaterList[0]" :src="removeHttpFromUrl(`${currentWatchLaterList[0].pic}@480w_270h_1c`)"
+              rounded="$bew-radius" aspect-video w-full
+            >
+          </picture>
 
-        <h3 text="3xl white" fw-600 style="text-shadow: 0 0 12px rgba(0,0,0,.3)">
-          {{ t('watch_later.title') }} ({{ watchLaterList.length }})
-        </h3>
-        <p v-if="watchLaterList.length > 0" flex="~ col" gap-4>
-          <Button
-            color="rgba(255,255,255,.35)" block text-color="white" strong flex-1
-            @click="handlePlayAll"
-          >
-            <template #left>
-              <tabler:player-play />
-            </template>
-            {{ t('watch_later.play_all') }}
-          </Button>
-          <Button
-            color="rgba(255,255,255,.35)" block text-color="white" strong flex-1
-            @click="handleClearAllWatchLater"
-          >
-            <template #left>
-              <tabler:trash />
-            </template>
-            {{ t('watch_later.clear_all') }}
-          </Button>
-          <Button
-            color="rgba(255,255,255,.35)" block text-color="white" strong flex-1
-            @click="handleRemoveWatchedVideos"
-          >
-            <template #left>
-              <tabler:circle-minus />
-            </template>
-            {{ t('watch_later.remove_watched_videos') }}
-          </Button>
-        </p>
+          <h3 text="3xl white" fw-600 style="text-shadow: 0 0 12px rgba(0,0,0,.3)">
+            {{ t('watch_later.title') }} ({{ watchLaterCount }})
+          </h3>
+          <p v-if="watchLaterCount > 0" flex="~ col" gap-4>
+            <Button
+              color="rgba(255,255,255,.35)" block text-color="white" strong flex-1
+              @click="handlePlayAll"
+            >
+              <template #left>
+                <div i-tabler:player-play />
+              </template>
+              {{ t('common.play_all') }}
+            </Button>
+            <Button
+              color="rgba(255,255,255,.35)" block text-color="white" strong flex-1
+              @click="handleClearAllWatchLater"
+            >
+              <template #left>
+                <div i-tabler:trash />
+              </template>
+              {{ t('watch_later.clear_all') }}
+            </Button>
+            <Button
+              color="rgba(255,255,255,.35)" block text-color="white" strong flex-1
+              @click="handleRemoveWatchedVideos"
+            >
+              <template #left>
+                <div i-tabler:circle-minus />
+              </template>
+              {{ t('watch_later.remove_watched_videos') }}
+            </Button>
+          </p>
+        </main>
       </div>
     </aside>
   </div>

@@ -1,14 +1,41 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import type { RankingType } from '../types'
-import type { RankingResult, List as RankingVideoItem } from '~/models/video/ranking'
-import type { List as RankingPgcItem, RankingPgcResult } from '~/models/video/rankingPgc'
+
+import { useBewlyApp } from '~/composables/useAppProvider'
+import type { GridLayoutType } from '~/logic'
 import { settings } from '~/logic'
-import emitter from '~/utils/mitt'
+import type { List as RankingVideoItem, RankingResult } from '~/models/video/ranking'
+import type { List as RankingPgcItem, RankingPgcResult } from '~/models/video/rankingPgc'
+import api from '~/utils/api'
+
+import type { RankingType } from '../types'
+
+const props = defineProps<{
+  gridLayout: GridLayoutType
+  topBarVisibility: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'beforeLoading'): void
+  (e: 'afterLoading'): void
+}>()
 
 const { t } = useI18n()
+const { handleBackToTop, handlePageRefresh } = useBewlyApp()
 
-const handleBackToTop = inject('handleBackToTop') as (targetScrollTop: number) => void
+const gridClass = computed((): string => {
+  if (props.gridLayout === 'adaptive') {
+    // eslint-disable-next-line ts/no-use-before-define
+    if (!activatedRankingType.value.seasonType)
+      return 'grid-adaptive-video'
+    else
+      return 'grid-adaptive-bangumi'
+  }
+
+  if (props.gridLayout === 'twoColumns')
+    return 'grid-two-columns'
+  return 'grid-one-column'
+})
 
 const rankingTypes = computed((): RankingType[] => {
   return [
@@ -49,40 +76,63 @@ const shouldMoveAsideUp = ref<boolean>(false)
 watch(() => activatedRankingType.value.id, () => {
   handleBackToTop(settings.value.useSearchPageModeOnHomePage ? 510 : 0)
 
+  initData()
+})
+
+watch(() => props.topBarVisibility, () => {
+  shouldMoveAsideUp.value = false
+
+  // Allow moving tabs up only when the top bar is not hidden & is set to auto-hide
+  // This feature is primarily designed to compatible with the Bilibili Evolved's top bar
+  // Even when the BewlyBewly top bar is hidden, the Bilibili Evolved top bar still exists, so not moving up
+  if (settings.value.autoHideTopBar && settings.value.showTopBar) {
+    if (props.topBarVisibility)
+      shouldMoveAsideUp.value = false
+
+    else
+      shouldMoveAsideUp.value = true
+  }
+})
+
+onMounted(() => {
+  initData()
+  initPageAction()
+})
+
+onActivated(() => {
+  initPageAction()
+})
+
+function initPageAction() {
+  handlePageRefresh.value = async () => {
+    if (isLoading.value)
+      return
+    initData()
+  }
+}
+
+function initData() {
+  videoList.length = 0
+  PgcList.length = 0
+  getData()
+}
+
+function getData() {
   if ('seasonType' in activatedRankingType.value)
     getRankingPgc()
   else
     getRankingVideos()
-})
+}
 
-onMounted(() => {
-  emitter.on('topBarVisibleChange', (val) => {
-    shouldMoveAsideUp.value = false
-
-    // Allow moving tabs up only when the top bar is not hidden & is set to auto-hide
-    // This feature is primarily designed to compatible with the Bilibili Evolved's top bar
-    // Even when the BewlyBewly top bar is hidden, the Bilibili Evolved top bar still exists, so not moving up
-    if (settings.value.autoHideTopBar && settings.value.showTopBar) {
-      if (val)
-        shouldMoveAsideUp.value = false
-
-      else
-        shouldMoveAsideUp.value = true
-    }
-  })
-
-  getRankingVideos()
-})
-
-onBeforeUnmount(() => {
-  emitter.off('topBarVisibleChange')
-})
+// onBeforeUnmount(() => {
+//   emitter.off(TOP_BAR_VISIBILITY_CHANGE)
+// })
 
 function getRankingVideos() {
   videoList.length = 0
+  emit('beforeLoading')
   isLoading.value = true
-  browser.runtime.sendMessage({
-    contentScriptQuery: 'getRankingVideos',
+  api.ranking.getRankingVideos({
     rid: activatedRankingType.value.rid,
     type: 'type' in activatedRankingType.value ? activatedRankingType.value.type : 'all',
   }).then((response: RankingResult) => {
@@ -90,20 +140,24 @@ function getRankingVideos() {
       const { list } = response.data
       Object.assign(videoList, list)
     }
-  }).finally(() => isLoading.value = false)
+  }).finally(() => {
+    isLoading.value = false
+    emit('afterLoading')
+  })
 }
 
 function getRankingPgc() {
   PgcList.length = 0
   isLoading.value = true
-  browser.runtime.sendMessage({
-    contentScriptQuery: 'getRankingPgc',
-    seasonType: activatedRankingType.value.seasonType,
+  api.ranking.getRankingPgc({
+    season_type: activatedRankingType.value.seasonType,
   }).then((response: RankingPgcResult) => {
     if (response.code === 0)
-      Object.assign(PgcList, response.result.list)
+      Object.assign(PgcList, response.data.list)
   }).finally(() => isLoading.value = false)
 }
+
+defineExpose({ initData })
 </script>
 
 <template>
@@ -117,10 +171,10 @@ function getRankingPgc() {
         <ul flex="~ col gap-2">
           <li v-for="rankingType in rankingTypes" :key="rankingType.id">
             <a
+              :class="{ active: activatedRankingType.id === rankingType.id }"
               px-4 lh-30px h-30px hover:bg="$bew-fill-2" w-inherit
               block rounded="$bew-radius" cursor-pointer transition="all 300 ease-out"
-              hover:scale-105 un-text="$bew-text-2 hover:$bew-text-1"
-              :class="{ active: activatedRankingType.id === rankingType.id }"
+              hover:scale-105 un-text="$bew-text-1"
               @click="activatedRankingType = rankingType"
             >{{ rankingType.name }}</a>
           </li>
@@ -128,58 +182,70 @@ function getRankingPgc() {
       </OverlayScrollbarsComponent>
     </aside>
 
-    <main w-full>
+    <main w-full :class="gridClass">
       <template v-if="!('seasonType' in activatedRankingType)">
         <VideoCard
           v-for="(video, index) in videoList"
-          :id="Number(video.aid)"
           :key="video.aid"
-          :duration="video.duration"
-          :title="video.title"
-          :desc="video.desc"
-          :cover="video.pic"
-          :author="video.owner.name"
-          :author-face="video.owner.face"
-          :mid="video.owner.mid"
-          :view="video.stat.view"
-          :danmaku="video.stat.danmaku"
-          :published-timestamp="video.pubdate"
-          :bvid="video.bvid"
-          :rank="index + 1"
-          :cid="video.cid"
+          :video="{
+            id: Number(video.aid),
+            duration: video.duration,
+            title: video.title,
+            desc: video.desc,
+            cover: video.pic,
+            author: {
+              name: video.owner.name,
+              authorFace: video.owner.face,
+              mid: video.owner.mid,
+            },
+            view: video.stat.view,
+            danmaku: video.stat.danmaku,
+            publishedTimestamp: video.pubdate,
+            bvid: video.bvid,
+            rank: index + 1,
+            cid: video.cid,
+          }"
           show-preview
-          horizontal
+          :horizontal="gridLayout !== 'adaptive'"
           w-full
         />
       </template>
       <template v-else>
-        <div grid="~ cols-2 gap-4">
-          <LongCoverCard
-            v-for="pgc in PgcList"
-            :key="pgc.url"
-            :url="pgc.url"
-            :cover="pgc.cover"
-            :title="pgc.title"
-            :desc="pgc.new_ep.index_show"
-            :view="pgc.stat.view"
-            :follow="pgc.stat.follow"
-            :rank="pgc.rank"
-            :capsule-text="pgc.rating.replace('分', '')"
-            horizontal
-            mb-8
-          />
-        </div>
+        <BangumiCard
+          v-for="pgc in PgcList"
+          :key="pgc.url"
+          :bangumi="{
+            url: pgc.url,
+            cover: pgc.cover,
+            title: pgc.title,
+            desc: pgc.new_ep.index_show,
+            view: pgc.stat.view,
+            follow: pgc.stat.follow,
+            rank: pgc.rank,
+            capsuleText: pgc.rating.replace('分', ''),
+            badge: {
+              text: pgc.badge_info.text || '',
+              bgColor: pgc.badge_info.bg_color || '',
+              bgColorDark: pgc.badge_info.bg_color_night || '',
+            },
+          }"
+          :horizontal="gridLayout !== 'adaptive'"
+        />
       </template>
 
       <!-- skeleton -->
       <template v-if="isLoading">
         <template v-if="!('seasonType' in activatedRankingType)">
-          <VideoCardSkeleton v-for="item in 30" :key="item" horizontal />
+          <VideoCardSkeleton
+            v-for="item in 30" :key="item"
+            :horizontal="gridLayout !== 'adaptive'"
+          />
         </template>
         <template v-else>
-          <div grid="~ cols-2 gap-4">
-            <LongCoverCardSkeleton v-for="item in 30" :key="item" horizontal />
-          </div>
+          <BangumiCardSkeleton
+            v-for="item in 30" :key="item"
+            :horizontal="gridLayout !== 'adaptive'"
+          />
         </template>
       </template>
     </main>
@@ -188,10 +254,26 @@ function getRankingPgc() {
 
 <style lang="scss" scoped>
 .active {
-  --at-apply: scale-110 bg-$bew-theme-color dark:bg-white text-white dark:text-black shadow-$bew-shadow-2;
+  --uno: "scale-110 bg-$bew-theme-color-auto text-$bew-text-auto shadow-$bew-shadow-2";
 }
 
 .hide {
-  --at-apply: h-[calc(100vh-70)] translate-y--70px;
+  --uno: "h-[calc(100vh-70)] translate-y--70px";
+}
+
+.grid-adaptive-video {
+  --uno: "grid 2xl:cols-4 xl:cols-3 lg:cols-2 md:cols-1 sm:cols-1 cols-1 gap-5";
+}
+
+.grid-adaptive-bangumi {
+  --uno: "grid 2xl:cols-5 xl:cols-4 lg:cols-3 md:cols-2 gap-5";
+}
+
+.grid-two-columns {
+  --uno: "grid cols-1 xl:cols-2 gap-4";
+}
+
+.grid-one-column {
+  --uno: "grid cols-1 gap-4";
 }
 </style>

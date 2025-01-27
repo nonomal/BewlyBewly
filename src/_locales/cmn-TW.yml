@@ -1,5 +1,6 @@
 common:
   view_all: 檢視所有
+  play_all: 全部播放
   loading: 載入中...
   undo: 復原
   view: '{count}次'
@@ -17,33 +18,75 @@ common:
   please_log_in_first: 請先登入
   login: 登入
   save_to_watch_later: 稍後觀看
-  added: 已添加
-  performance_impact_warn: 這個功能可能會降低效能
-  enable: 啓用
-  disable: 停用
-  refresh: 重新整理
-  reset: 重置
+  added: 已新增
+  performance_impact_warn: 這個功能可能會降低效能！
+  no_more_content: 沒有更多內容了
+
+  operation:
+    add: 新增
+    edit: 編輯
+    delete: 刪除
+    confirm: 確定
+    cancel: 取消
+    enable: 啟用
+    disable: 停用
+    refresh: 重新整理
+    reset: 重設
+    import: 匯入
+    export: 匯出
+
+  table:
+    index: 索引
+    title: 標題
+    name: 名稱
+    remark: 備註
+    operations: 操作
+
+  position:
+    left: 左側
+    right: 右側
+    top: 頂部
+    bottom: 底部
+
+iframe_drawer:
+  open_in_new_tab: 在新索引標籤開啟連結
+  close: 關閉
+  press_esc_again_to_close: 再次按下 Esc 關閉
+
 settings:
   title: 設定
 
   # Settings menu
   menu_general: 一般
+  menu_desktop_and_dock: 桌面與 Dock
   menu_appearance: 外觀
+  menu_bewly_pages: BewlyBewly 頁面
   menu_home: 首頁
   menu_search_page: 搜尋頁
   menu_about: 關於
   menu_compatibility: 相容性
 
   # Settings group
-  group_common: 通用
+  group_common: 常用
+  group_languages_and_fonts: 語言與字型
+  group_link_opening_behavior: 連結開啟行為
+  group_video_card: 影片卡片
+  group_performance: 毛玻璃與效能
   group_topbar: 頂欄
   group_dock: Dock
+  group_sidebar: 側邊欄
+  group_sidebar_desc: 位於首頁以外的頁面右側或左側，通常有淺/深色模式切換按鈕和設定按鈕。
   group_color: 顏色
   group_wallpaper: 背景圖片
   group_logo: LOGO
   group_search_bar: 搜尋欄
-  group_recommendation_mode: 推薦模式
+  group_recommendation_mode: 「為你推薦」推薦模式
+  group_recommendation_filters: 「為你推薦」過濾
+  group_recommendation_filters_desc: |
+    限制的數值不要設太大，不然載入時間可能會增加！
+  group_following: 正在跟隨
   group_search_page_mode: 搜尋頁模式
+  group_home_tabs: 首頁標籤欄
 
   # Settings buttons
   btn:
@@ -52,29 +95,81 @@ settings:
     open_settings: 打開設定...
 
   # General
-  select_language: 介面語言
-  select_language_opt:
-    english: 英文
-    mandarin_cn: 官话
-    mandarin_tw: 官話
-    jyut: 廣東話
+  touch_screen_optimization: 觸控螢幕體驗改進
+  touch_screen_optimization_desc: >
+    啟用後，如頂欄，你可能需要點選項目才能看到更多資訊，而不是滑鼠移過去就會顯示。（舊版頂欄不支援此功能）
   chk_box:
     show: 顯示
     hidden: 隱藏
+  enable_grid_layout_switcher: 啟用版面格線佈局切換器
   enable_horizontal_scrolling: 啟用橫向捲動
-  enable_horizontal_scrolling_desc: 啟用後，滑鼠捲動時將直接捲動橫向捲軸列表
+  enable_horizontal_scrolling_desc: 啟用後，滑鼠捲動時將直接捲動橫向捲軸列表。
+
+  select_language: 介面語言
+  select_language_opt:
+    english: 英文
+    mandarin_cn: 官话 - 简体中文
+    mandarin_tw: 官話 - 正體中文
+    jyut: 廣東話
+  customize_font: 自訂字型
+  customize_font_desc: |-
+    對於喜歡舊字形的用戶，我們推薦 <a class="link" href="https://github.com/GuiWonder/Shanggu" target="_blank">Shanggu Fonts (尚古字型)</a> 和 <a class="link" href="https://github.com/ayaka14732/FanWunHak" target="_blank">Fan Wun Hak (繁媛黑體)</a>。
+    這些字型還具有將簡體中文轉換為繁體/正體中文的能力。
+  override_danmaku_font: 覆蓋彈幕字型
+  override_danmaku_font_desc: >
+    設定彈幕字型為您的自訂字型以覆蓋預設值。影片播放器將無法在之後更改彈幕字型。
+  remove_the_indent_from_chinese_punctuation: 移除中文標點符號的縮排
+  remove_the_indent_from_chinese_punctuation_desc: >
+    Bilibili 預設會特別處理中文標點符號以達到左對齊。
+    如果你正在使用自訂字型，建議移除縮排。
+
+  disable_frosted_glass: 停用毛玻璃效果
+  reduce_frosted_glass_blur: 降低毛玻璃模糊強度
+
+  link_opening_behavior_opt:
+    current_tab: 目前索引標籤
+    current_tab_if_not_homepage: 不在首頁則在目前索引標籤開啟，否則在新索引標籤
+    new_tab: 新索引標籤
+    drawer: 抽屜開啟
+  top_bar_link_opening_behavior: 頂欄連結開啟行為
+  video_card_link_opening_behavior: 影片和番劇卡片連結開啟行為
+  search_bar_link_opening_behavior: 搜尋欄連結開啟行為
+  close_drawer_without_pressing_esc_again: 關閉抽屜時不用再次按 <kbd>Esc</kbd> 關閉
+
+  block_ads: 封鎖廣告
+  block_top_search_page_ads: 封鎖 Bilibili 搜尋頁上方的廣告
+  block_top_search_page_ads_desc: >
+    有時候，搜尋結果上方的廣告實際上是年末總結、年度報告這些。
+    如果你不想這些內容被誤刪，請停用此選項。
+
+  enable_video_preview: 啟用影片預覽功能（如果可以的話）
   enable_video_ctrl_bar_on_video_card: 在影片卡片上顯示影片控制欄
   hover_video_card_delayed: 將滑鼠懸停在影片卡片上時延遲影片預覽
-  auto_hide_topbar: 自動隱藏頂欄
-  dock_position: Dock 位置
-  dock_position_desc: 螢幕上的位置
-  dock_position_opt:
-    left: 左側
-    right: 右側
-    bottom: 底部
+
+  # Desktop and Dock
+  use_old_top_bar: 使用舊版頂欄
+  auto_hide_top_bar: 自動隱藏頂欄
+  show_bewly_or_bili_top_bar_switcher: 顯示 BewlyBewly/Bilibili 頂欄切換器
+  show_bewly_or_bili_page_switcher: 顯示 BewlyBewly/Bilibili 頁面切換器
+  top_bar_icon_badges: 圖示標記樣式
+  top_bar_icon_badges_opt:
+    number: 數字
+    dot: 圓點
+    none: 不顯示
+  always_use_dock: 總是使用 Dock
+  always_use_dock_desc: 啟用後，Dock 將始終顯示，側邊欄將隱藏。我們推薦你同時啟用自動隱藏 Dock。
   auto_hide_dock: 自動隱藏 Dock
+  dock_position: Dock 位置
+  dock_position_desc: 螢幕上的位置。
   dock_content_adjustment: Dock 內容調整
-  dock_content_adjustment_desc: 第一個啓用的 Dock 項目的頁面將是起始頁面
+  dock_content_adjustment_desc: 第一個啟用的 Dock 項目的頁面將是起始頁面。
+  dock_item_open_in_new_tab: 在新索引標籤開啟
+  dock_item_use_original_bili_web_page: 使用原版 Bilibili 網頁
+  disable_dock_glowing_effect: 關閉 Dock 發光效果
+  disable_light_dark_mode_switcher: 關閉淺/深色模式切換按鈕
+  move_back_to_top_and_refresh_to_dock: 將返回頂部和重新整理按鈕移動到 Dock
+  sidebar_position: 側邊欄位置
+  auto_hide_sidebar: 自動隱藏側邊欄
 
   # Appearance
   theme: 主題
@@ -83,26 +178,31 @@ settings:
     dark: 深色
     auto: 自動
   theme_color: 主題色
+  gradient_theme_color_background: 在深色模式下使用漸層主題色作為背景
   wallpaper_mode: 背景圖片模式
-  wallpaper_mode_desc: '使用 URL: 直接用網上圖片的 URL 來設定背景圖片。'
+  wallpaper_mode_desc: '使用網址: 直接使用網路圖片的網址來設定背景圖片。'
   wallpaper_mode_opt:
     build_in: 內建
-    by_url: 使用 URL
+    by_url: 使用網址
   choose_ur_wallpaper: 選擇你的背景
-  image_url: 圖片 URL
+  image_url: 圖片網址
   image_url_hint: |-
-    URL 示例: https://pic.imgdb.cn/item/638e1d63b1fccdcd36103811.jpg
-    https://pic.imgdb.cn/item/638e1d7ab1fccdcd36106346.jpg
-  enable_wallpaper_masking: 啓用背景遮蔽效果
+    網址範例: https://cdn.jsdelivr.net/gh/BewlyBewly/Imgs/wallpapers/rocky-mountain-cloudscape.jpg
+    https://cdn.jsdelivr.net/gh/BewlyBewly/Imgs/wallpapers/green-white-mountains.jpg
+  enable_wallpaper_masking: 啟用背景遮蔽效果
   wallpaper_mask_opacity: 背景遮蔽透明度調節
   wallpaper_blur_intensity: 背景模糊強度調節
+  customize_css: 自訂 CSS
+  customize_css_desc: |-
+    如果你不熟悉 CSS，請不要修改 CSS。否則可能會導致意外的顯示問題。
+    如果你在修改 CSS 後遇到任何問題，請重新安裝 BewlyBewly。
 
   # Search page
   logo_color: Logo 顏色
   logo_color_opt:
     white: 白
-    theme_color: 主題色
-  enable_logo_glowing_effect: 啓用 Logo 發光效果
+    theme_color: 主題顏色
+  enable_logo_glowing_effect: 啟用 Logo 發光效果
   logo_visibility: Logo 可視性
   bg_darkens_when_the_search_bar_is_focused: 當搜尋欄聚焦時背景變暗
   bg_blurs_when_the_search_bar_is_focused: 當搜尋欄聚焦時背景變模糊
@@ -113,48 +213,91 @@ settings:
   recommendation_mode: 推薦模式
   recommendation_mode_desc: |
     如果您想要使用手機端的推薦演算法，請先授權 BewlyBewly 使用 access key。
-  recommendation_mode_desc2: |
-    由於B站對以前的API實施了限制，要請求 access key 的方法不再運作。我們建議使用 Web 模式 🫠
   authorize_app: 授權 BewlyBewly 使用 access key
   authorize_app_desc: >
-    授權使用後能在首頁推送 bilibili 手機端推介演算法的影片，授權 key 的有效期約爲一個月，過了有效期後，請記得重新取得授權以取得 access
+    授權使用後能在首頁推送 bilibili 手機端推介演算法的影片，授權 key 的有效期約為一個月，過了有效期後，請記得重新取得授權以取得 access
     key。
   authorize_app_more_info_access_key: 關於 access key
-  scan_qrcode_desc: 使用 Bilibili 手機應用程式掃描這個QR碼，以授權取得 access key。
+  scan_qrcode_desc: 使用 Bilibili 手機應用程式掃描這個 QR Code，以授權取得 access key。
+
+  disable_filters_for_followed_users: 正在跟隨的使用者不受過濾條件限制
+  disable_filters_for_followed_users_desc: >
+    如果啟用此選項，正在跟隨的使用者不受過濾條件限制。
+  filter_out_vertical_videos: 過濾直式影片（僅在 app 推薦模式下有效）
+  filter_by_view_count: 按觀看次數篩選
+  filter_by_view_count_desc: 篩選掉觀看次數少於您設定的影片。
+  filter_by_view_count_unit: 次
+  filter_by_duration: 按影片長度篩選
+  filter_by_duration_desc: 篩選掉時長少於您設定的影片。
+  filter_by_duration_unit: 秒
+  filter_item_already_exist: 這個篩選項目已經存在！
+  filter_by_title: 按標題篩選
+  filter_by_title_desc: |-
+    按標題篩選掉包含您設定的字串的影片（不區分大小寫），或使用正規表示式，如 <code>/abc&#124;\d+/</code>，用 <code>/</code> 包裡。
+    <br/>
+    在下面的表格中，您可以按 <kbd>Enter</kbd> 鍵新增新的篩選條件或確認變更。
+    按 <kbd>Esc</kbd> 鍵取消變更。
+    按兩下欄位以編輯目前欄位。
+  filter_by_user: 按使用者篩選
+  filter_by_user_desc: |-
+    篩選掉包含您設定的使用者名稱（全名，不區分大小寫）或 MID 所上傳的影片，或使用正規表示式，如 <code>/abc&#124;\d+/</code>，用 <code>/</code> 包裡。
+    <br/>
+    在下面的表格中，您可以按 <kbd>Enter</kbd> 鍵建立新的篩選條件或確認變更。
+    按 <kbd>Esc</kbd> 鍵取消變更。
+    按兩下欄位以編輯目前欄位。
+  filter_by_user_table:
+    username_or_mid: 使用者名稱 / MID
+
+  following_tab_show_livestreaming_videos: 在「正在跟隨」中顯示實況直播
+
   use_search_page_mode: 首頁使用搜尋頁模式
   settings_shared_with_the_search_page: 與搜尋頁共用的設定
-  settings_shared_with_the_search_page_desc: 這些設定都與搜尋頁共用
+  settings_shared_with_the_search_page_desc: 這些設定都與搜尋頁共用。
   search_page_mode_wallpaper_fixed: 將搜尋頁模式的背景固定
+  home_tabs_adjustment: 標籤欄調整
+  home_tabs_adjustment_desc: 第一個啟用的標籤項目調整頁面將是起始頁面。
+  always_show_tabs_on_home_page: 總是顯示首頁標籤欄
 
   # Compatibility
   # Common
+  topbar_visibility: 頂欄可視性
+  topbar_visibility_desc: 如果你正在使用 Bilibili Evolved 的頂欄，你可以在這裡關閉 BewlyBewly 的頂欄。
   use_original_bilibili_homepage: 使用原版 Bilibili 首頁
   use_original_bilibili_homepage_desc: 當您變更此設定後，如果在首頁上，頁面將自動重新整理！
+  use_original_bilibili_topbar: 使用原版 Bilibili 頂欄
   adapt_to_other_page_styles: 適應其他頁面風格
-  adapt_to_other_page_styles_desc: 適應一些常見頁面，以配合 BewlyBewly 主題
+  adapt_to_other_page_styles_desc: 適應一些常見頁面，以配合 BewlyBewly 主題。
   # Bilibili Evolved
-  topbar_visibility: 頂欄可視性
-  topbar_visibility_desc: 用於與 Bilibili Evolved 客製化頂欄相容
   follow_bilibili_evolved_color: 使用 Bilibili Evolved 主題色
-  follow_bilibili_evolved_color_desc: 每次變更 Bilibili Evolved 主題色後，記得重新選取此選項以更新配置
+  follow_bilibili_evolved_color_desc: 每次變更 Bilibili Evolved 主題色後，記得重新選取此選項以更新配置。
 
   # About
+  links: 連結
+  sponsor: 贊助
+  sponsor_desc: 喜歡這份專案並希望看到它蓬勃發展嗎？請考慮贊助它！您的支持是此專案發展的動力。
+  afdian: 爱发电
   import_settings: 匯入設定
   export_settings: 匯出設定
-  export_settings_desc: 一些敏感性資訊，例如 access key，可能需要重新取得
+  export_settings_desc: 一些敏感性資訊，例如 access key，可能需要重新取得。
+  reset_settings: 重設設定
+  reset_settings_confirm: |-
+    重設設定？
+    此操作無法撤消，你確定要重設你的設定嗎？
   contributors: 貢獻者
 
 auth:
-  err_tip: 無法授權 access key
-  plz_login_first: 請先登入 bilibili
-  receive_verified_url_err: 不明錯誤，請重新整理頁面後再試一次。
-  failed_to_get_accesskey: 無法取得 access key
+  auth_access_key_first: 在這之前請先授權 BewlyBewly 使用 access key
+
 topbar:
+  switch_to_bewly_top_bar: 切換到 BewlyBewly 頂部欄
+  switch_to_bili_top_bar: 切換到 Bilibili/Bilibili-Evolved 頂部欄
+
   sign_in: 登入
   notifications: 通知
-  moments: 動向
+  moments: 動態
   favorites: 收藏
   history: 記錄
+  watch_later: 稍後觀看
   creative_center: 創作中心
   upload: 上傳
   logo_dropdown:
@@ -183,33 +326,40 @@ topbar:
     vlog: VLOG
     funny: 搞笑
     standalone_gaming: 單機遊戲
-    vtubers: Vtubers & Vups
+    vtubers: VTubers & Vups
     charitable_events: 慈善
     moocs: 線上課堂
     articles: 專欄
     live: 直播
     activities: 活動
     paid_courses: 付費課堂
-    community: 社羣中心
+    community: 社群中心
     music_plus: 新歌熱榜
+    game_center: 遊戲中心
+    comic_con_and_goods: 動漫節與周邊
+    manga: 漫畫
+    game_competitions: 遊戲賽事
   user_dropdown:
     money: 硬幣：
     b_coins: B幣：
+    exp_desc: '目前經驗 {current_exp}，升級到 LV {level} 還需要 {need_exp}'
     following: 追蹤中
     followers: 粉絲
-    posts: 動向
-    accout_settings: 帳戶資訊
+    posts: 動態
+    bilibili_premium: Bilibili 大會員
+    account_settings: 帳戶設定
     uploads_manager: 內容管理
     b_coins_wallet: B幣錢包
     orders: 訂單資訊
+    workshop: 我的工作坊
     my_stream_info: 實況資訊
     my_courses: 我的課程
-    log_out: 退出登入
+    log_out: 登出
   noti_dropdown:
     replys: 回覆留言
     mentions: 提及我的
     likes: 按讚訊息
-    messages: 系统通知
+    messages: 系統通知
     chats: 聊天室
   moments_dropdown:
     tabs:
@@ -225,6 +375,7 @@ topbar:
     sticker: 上傳貼圖
     video: 上傳影片
     manager: 內容管理
+
 dock:
   search: 搜尋
   home: 首頁
@@ -232,22 +383,46 @@ dock:
   history: 觀看記錄
   watch_later: 稍後觀看
   favorites: 收藏
+  moments: 動向
   dark_mode: 深色模式
   light_mode: 淺色模式
   settings: 設定
-home:
-  not_interested_in: 對哪方面不感興趣？
+
+video_card:
+  operation:
+    not_interested: 不感興趣
+    open_in_new_tab: 新標籤頁開啟
+    open_in_background: 後台開啟
+    open_in_new_window: 新視窗開啟
+    open_in_current_tab: 目前索引標籤開啟
+    open_in_drawer: 抽屜開啟
+
+    copy_video_link: 複製影片連結
+    copy_bv_number: 複製 BV 號
+    copy_av_number: 複製 AV 號
+
+    view_the_original_cover: 檢視封面
+
+  group_contribution: '{firstAuthor} 等 {num} 人共同創作'
   video_removed: 影片已移除
-  for_you: 爲你推薦
+
+home:
+  tell_us_why: 為什麼這樣做...
+  not_interested_desc: 你可以用 <kbd>↑</kbd> 和 <kbd>↓</kbd> 來選擇原因，或者直接使用數字鍵來選擇原因，按 <kbd>Enter</kbd> 就直接提交。
+
+  for_you: 為你推薦
   following: 正在跟隨
   trending: 發燒影片
   ranking: 排行
   subscribed_series: 訂閱劇集
+  live: 直播
+
 ranking:
   all: 全部
   chinese_anime_related: 中國動畫相關
   original_content: 原創內容
   debut_work: 新人作品
+
 anime:
   total_episodes: 全 {ep} 話
   update_to_n_episodes: 更新至 {ep} 話
@@ -266,6 +441,7 @@ anime:
       fri: 週五
       sat: 週六
       sun: 週日
+
 history:
   title: 觀看記錄
   turn_on_watch_history: 啟用觀看記錄
@@ -281,19 +457,24 @@ history:
   turn_on_watch_history_confirm: |-
     要啟用觀看記錄嗎？
     你確定要啟用觀看記錄嗎？
+
 favorites:
   unfavorite: 取消收藏
+  unfavorite_confirm: |-
+    要取消收藏選中的影片嗎？
+    此操作無法撤消，你確定要取消收藏選中的影片嗎？
+
 watch_later:
   title: 稍後觀看
-  play_all: 全部播放
   clear_all: 清空稍後觀看
   clear_all_confirm: |-
     要清空稍後觀看的影片嗎？
-    此操作無法撤消，你確定要清空稍後觀看的影片嗎？
+    此操作無法復原，你確定要清空稍後觀看的影片嗎？
   remove_watched_videos: 移除看過的影片
   remove_watched_videos_confirm: |-
     要移除看過的影片嗎？
-    此操作無法撤消，你確定要移除看過的影片嗎？
+    此操作無法復原，你確定要移除看過的影片嗎？
+
 search_bar:
   history_title: 搜尋記錄
   clear_history: 清除所有搜尋記錄

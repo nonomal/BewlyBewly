@@ -1,44 +1,118 @@
 <script setup lang="ts">
 import type { Ref } from 'vue'
-import type { DataItem as MomentItem, MomentResult } from '~/models/moment/moment'
-import emitter from '~/utils/mitt'
 
-const momentList = reactive<MomentItem[]>([])
+import { useBewlyApp } from '~/composables/useAppProvider'
+import type { GridLayoutType } from '~/logic'
+import type { DataItem as MomentItem, MomentResult } from '~/models/moment/moment'
+import api from '~/utils/api'
+
+// https://github.com/starknt/BewlyBewly/blob/fad999c2e482095dc3840bb291af53d15ff44130/src/contentScripts/views/Home/components/ForYou.vue#L16
+interface VideoElement {
+  uniqueId: string
+  item?: MomentItem
+}
+
+const props = defineProps<{
+  gridLayout: GridLayoutType
+}>()
+
+const emit = defineEmits<{
+  (e: 'beforeLoading'): void
+  (e: 'afterLoading'): void
+}>()
+
+const gridClass = computed((): string => {
+  if (props.gridLayout === 'adaptive')
+    return 'grid-adaptive'
+  if (props.gridLayout === 'twoColumns')
+    return 'grid-two-columns'
+  return 'grid-one-column'
+})
+
+const videoList = ref<VideoElement[]>([])
 const isLoading = ref<boolean>(false)
 const needToLoginFirst = ref<boolean>(false)
 const containerRef = ref<HTMLElement>() as Ref<HTMLElement>
 const offset = ref<string>('')
 const updateBaseline = ref<string>('')
 const noMoreContent = ref<boolean>(false)
+const noMoreContentWarning = ref<boolean>(false)
+const { handleReachBottom, handlePageRefresh, haveScrollbar } = useBewlyApp()
 
-onMounted(async () => {
-  for (let i = 0; i < 3; i++)
-    await getFollowedUsersVideos()
+onMounted(() => {
+  initData()
+  initPageAction()
+})
 
-  emitter.off('reachBottom')
-  emitter.on('reachBottom', async () => {
-    if (!isLoading.value) {
-      for (let i = 0; i < 3; i++)
-        await getFollowedUsersVideos()
+onActivated(() => {
+  initPageAction()
+})
+
+async function initData() {
+  offset.value = ''
+  updateBaseline.value = ''
+  videoList.value.length = 0
+  noMoreContent.value = false
+  noMoreContentWarning.value = false
+
+  await getData()
+}
+
+async function getData() {
+  emit('beforeLoading')
+  isLoading.value = true
+
+  try {
+    for (let i = 0; i < 3; i++)
+      await getFollowedUsersVideos()
+  }
+  finally {
+    isLoading.value = false
+    emit('afterLoading')
+  }
+}
+
+function initPageAction() {
+  handleReachBottom.value = async () => {
+    if (isLoading.value)
+      return
+    if (noMoreContent.value) {
+      noMoreContentWarning.value = true
+      return
     }
-  })
-})
-
-onUnmounted(() => {
-  emitter.off('reachBottom')
-})
+    getData()
+  }
+  handlePageRefresh.value = async () => {
+    if (isLoading.value)
+      return
+    if (isLoading.value)
+      return
+    initData()
+  }
+}
 
 async function getFollowedUsersVideos() {
   if (noMoreContent.value)
     return
 
-  isLoading.value = true
+  if (offset.value === '0') {
+    noMoreContent.value = true
+    return
+  }
+
   try {
-    const response: MomentResult = await browser.runtime.sendMessage({
-      contentScriptQuery: 'getMoments',
+    let i = 0
+    // https://github.com/starknt/BewlyBewly/blob/fad999c2e482095dc3840bb291af53d15ff44130/src/contentScripts/views/Home/components/ForYou.vue#L208
+    const pendingVideos: VideoElement[] = Array.from({ length: 30 }, () => ({
+      uniqueId: `unique-id-${(videoList.value.length || 0) + i++})}`,
+    } satisfies VideoElement))
+    let lastVideoListLength = videoList.value.length
+    videoList.value.push(...pendingVideos)
+
+    const response: MomentResult = await api.moment.getMoments({
       type: 'pgc',
-      offset: offset.value,
-      updateBaseline: updateBaseline.value,
+      offset: Number(offset.value),
+      update_baseline: updateBaseline.value,
     })
 
     if (response.code === -101) {
@@ -58,12 +132,20 @@ async function getFollowedUsersVideos() {
       })
 
       // when videoList has length property, it means it is the first time to load
-      if (!momentList.length) {
-        Object.assign(momentList, resData)
+      if (!videoList.value.length) {
+        videoList.value = resData.map(item => ({ uniqueId: `${item.id_str}`, item }))
       }
       else {
-        // else we concat the new data to the old data
-        Object.assign(momentList, momentList.concat(resData))
+        resData.forEach((item) => {
+          videoList.value[lastVideoListLength++] = {
+            uniqueId: `${item.id_str}`,
+            item,
+          }
+        })
+      }
+
+      if (!haveScrollbar() && !noMoreContent.value) {
+        getFollowedUsersVideos()
       }
     }
     else if (response.code === -101) {
@@ -71,13 +153,15 @@ async function getFollowedUsersVideos() {
     }
   }
   finally {
-    isLoading.value = false
+    videoList.value = videoList.value.filter(video => video.item)
   }
 }
 
 function jumpToLoginPage() {
   location.href = 'https://passport.bilibili.com/login'
 }
+
+defineExpose({ initData })
 </script>
 
 <template>
@@ -87,39 +171,57 @@ function jumpToLoginPage() {
         {{ $t('common.login') }}
       </Button>
     </Empty>
+    <Empty v-if="videoList.length === 0 && !needToLoginFirst" mt-6 :description="$t('common.no_more_content')">
+      <Button type="primary" @click="initData()">
+        {{ $t('common.operation.refresh') }}
+      </Button>
+    </Empty>
     <div
       v-else
       ref="containerRef"
       m="b-0 t-0" relative w-full h-full
-      grid="~ 2xl:cols-5 xl:cols-4 lg:cols-3 md:cols-2 gap-5"
+      :class="gridClass"
     >
       <VideoCard
-        v-for="moment in momentList"
-        :id="moment.modules.module_author.mid"
-        :key="moment.modules.module_author.mid"
-        :top-right-content="false"
-        :title="`${moment.modules.module_dynamic.major.pgc?.title}`"
-        :cover="`${moment.modules.module_dynamic.major.pgc?.cover}`"
-        :author="moment.modules.module_author.name"
-        :author-face="moment.modules.module_author.face"
-        :mid="moment.modules.module_author.mid"
-        :view-str="moment.modules.module_dynamic.major.pgc?.stat.play"
-        :danmaku-str="moment.modules.module_dynamic.major.pgc?.stat.danmaku"
-        :capsule-text="moment.modules.module_author.pub_time"
-        :epid="moment.modules.module_dynamic.major.pgc?.epid"
+        v-for="video in videoList"
+        :key="video.uniqueId"
+        :skeleton="!video.item"
+        type="bangumi"
+        :video="video.item ? {
+          id: video.item.modules.module_author.mid,
+          title: `${video.item.modules.module_dynamic.major.pgc?.title}`,
+          cover: `${video.item.modules.module_dynamic.major.pgc?.cover}`,
+          author: {
+            name: video.item.modules.module_author.name,
+            authorUrl: video.item.modules.module_author.jump_url,
+            authorFace: video.item.modules.module_author.face,
+            mid: video.item.modules.module_author.mid,
+          },
+          viewStr: video.item.modules.module_dynamic.major.pgc?.stat.play,
+          danmakuStr: video.item.modules.module_dynamic.major.pgc?.stat.danmaku,
+          capsuleText: video.item.modules.module_author.pub_time,
+          epid: video.item.modules.module_dynamic.major.pgc?.epid,
+        } : undefined"
+        :show-watcher-later="false"
+        :horizontal="gridLayout !== 'adaptive'"
       />
-
-      <!-- skeleton -->
-      <template v-if="isLoading">
-        <VideoCardSkeleton v-for="item in 30" :key="item" />
-      </template>
     </div>
 
-    <Transition name="fade">
-      <Loading v-if="isLoading" />
-    </Transition>
+    <!-- no more content -->
+    <Empty v-if="noMoreContentWarning" class="pb-4" :description="$t('common.no_more_content')" />
   </div>
 </template>
 
 <style lang="scss" scoped>
+.grid-adaptive {
+  --uno: "grid 2xl:cols-5 xl:cols-4 lg:cols-3 md:cols-2 sm:cols-1 cols-1 gap-5";
+}
+
+.grid-two-columns {
+  --uno: "grid cols-1 xl:cols-2 gap-4";
+}
+
+.grid-one-column {
+  --uno: "grid cols-1 gap-4";
+}
 </style>

@@ -1,10 +1,16 @@
 export enum MenuType {
   General = 'General',
+  DesktopAndDock = 'DesktopAndDock',
   Appearance = 'Appearance',
-  SearchPage = 'SearchPage',
-  Home = 'Home',
+  BewlyPages = 'BewlyPages',
   Compatibility = 'Compatibility',
+  BilibiliSettings = 'BilibiliSettings',
   About = 'About',
+}
+
+export enum BewlyPage {
+  Home = 'Home',
+  Search = 'Search',
 }
 
 export interface MenuItem {

@@ -29,7 +29,7 @@ function onClickOption(val: OptionType) {
   window.removeEventListener('click', () => {})
   label.value = val.label
   emit('update:modelValue', val.value)
-  emit('change', val)
+  emit('change', val.value)
   showOptions.value = false
 }
 
@@ -83,13 +83,14 @@ function onMouseEnter() {
         transition="all duration-300"
       />
     </div>
-    <transition>
+    <Transition name="dropdown">
       <div
         v-if="showOptions"
-        pos="absolute" bg="$bew-elevated-2" backdrop-glass shadow="$bew-shadow-2" p="2"
+        style="backdrop-filter: var(--bew-filter-glass-1)"
+        pos="absolute" bg="$bew-elevated" shadow="$bew-shadow-2" p="2"
         m="t-2"
         rounded="$bew-radius" z="1" flex="~ col gap-1"
-        w="full" max-h-300px overflow-y-scroll will-change-transform
+        w="full" max-h-300px overflow-y-overlay will-change-transform transform-gpu
       >
         <div
           v-for="option in options"
@@ -105,18 +106,9 @@ function onMouseEnter() {
           <span v-text="option.label" />
         </div>
       </div>
-    </transition>
+    </Transition>
   </div>
 </template>
 
 <style lang="scss" scoped>
-.v-enter-active,
-.v-leave-active {
-  --at-apply: transition-all duration-500;
-}
-
-.v-enter-from,
-.v-leave-to {
-  --at-apply: opacity-0 transform-gpu scale-95 -translate-y-4 filter blur-sm;
-}
 </style>

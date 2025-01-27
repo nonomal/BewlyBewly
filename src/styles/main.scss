@@ -1,11 +1,15 @@
 * {
   outline-color: var(--bew-theme-color-80);
-  outline-width: 2px;
-  outline-offset: -2px;
+  font-feature-settings: "tnum";
+  // outline-width: 2px;
+  // outline-offset: 2px;
 }
 
-.dark * {
-  color-scheme: dark;
+.dark {
+  input,
+  textarea {
+    color-scheme: dark;
+  }
 }
 
 ::-webkit-scrollbar {
@@ -15,8 +19,6 @@
 
 ::-webkit-scrollbar-track {
   background: transparent;
-
-
 }
 
 html.bewly-design > ::-webkit-scrollbar-track {
@@ -34,37 +36,113 @@ html.bewly-design > ::-webkit-scrollbar-track {
 
 html.bewly-design,
 .bewly-design body {
-  font-size: 14px !important;
+  // font-size: 14px !important;
   min-width: unset !important;
   filter: none !important;
   color: var(--bew-text-1);
-  line-height: unset;
   background-image: none;
 }
 
 .dark.bewly-design body,
 html.dark.bewly-design {
-  background-color: var(--bew-bg);
+  background-color: var(--bew-bg) !important;
 }
 
-.keep-two-lines {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  line-break: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+.bewly-design *::selection,
+.bewly-wrapper *::selection {
+  background: color-mix(in oklab, var(--bew-theme-color-60), var(--bew-bg, white) 20%) !important;
+  color: revert !important;
 }
 
 .bewly-design {
-  h1,
-  h2,
-  h3,
-  h4,
-  h5,
-  h6 {
-    --at-apply: color-$bew-text-1;
+  input {
+    background-color: transparent;
   }
+}
+
+// Adjust broken image icon
+img {
+  position: relative;
+
+  &::before {
+    content: "";
+    display: block;
+    width: 100%;
+    height: 100%;
+    background-image: url("/assets/broken-image.png");
+    background-size: 25px;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+}
+
+.bewly-wrapper {
+  line-height: 1.4;
+
+  * {
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .keep-two-lines {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    line-break: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  code {
+    display: inline-block;
+    background-color: var(--bew-fill-1);
+    padding: 0 0.5em;
+    margin: 0.14em 0.2em;
+    border-radius: 4px;
+    font-weight: 600;
+    line-height: 1.24;
+  }
+
+  kbd {
+    display: inline-block;
+    background-color: var(--bew-fill-1);
+    padding: 0 0.5em;
+    margin: 0.14em 0.2em;
+    border-radius: 4px;
+    box-shadow:
+      0 0 0 1px var(--bew-border-color),
+      0 1.4px 0 0 var(--bew-fill-2);
+    line-height: 1.24;
+    cursor: pointer;
+    transition: 0.3s;
+
+    &:hover {
+      background-color: var(--bew-fill-2);
+    }
+
+    &:active {
+      background-color: var(--bew-fill-3);
+      translate: 0 1.4px;
+      box-shadow:
+        0 0 0 1px var(--bew-border-color),
+        0 -1.4px 0 0 var(--bew-fill-2);
+    }
+  }
+
+  a.link {
+    color: var(--bew-theme-color);
+
+    &:hover {
+      color: var(--bew-theme-color-80);
+    }
+  }
+}
+
+// Prevent the scrollbar from being covered by the other elements
+.os-scrollbar {
+  --uno: "z-100000";
 }
 
 // Change OverlayScrollbar color
@@ -72,11 +150,6 @@ html.dark.bewly-design {
   --os-handle-bg: rgba(120, 120, 140, 0.44);
   --os-handle-bg-hover: rgba(120, 120, 140, 0.55);
   --os-handle-bg-active: rgba(120, 120, 140, 0.66);
-}
-
-.link-navbar,
-#home_nav {
-  display: none;
 }
 
 /* Color Mode transition */

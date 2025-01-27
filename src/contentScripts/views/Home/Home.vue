@@ -1,81 +1,133 @@
 <script setup lang="ts">
-import { useI18n } from 'vue-i18n'
-import ForYou from './components/ForYou.vue'
-import Following from './components/Following.vue'
-import Trending from './components/Trending.vue'
-import Ranking from './components/Ranking.vue'
-import SubscribedSeries from './components/SubscribedSeries.vue'
-import type { HomeTab } from './types'
-import { HomeSubPage } from './types'
+import { useThrottleFn } from '@vueuse/core'
+
+import { useBewlyApp } from '~/composables/useAppProvider'
+import { TOP_BAR_VISIBILITY_CHANGE } from '~/constants/globalEvents'
+import { gridLayout, settings } from '~/logic'
+import type { HomeTab } from '~/stores/mainStore'
+import { useMainStore } from '~/stores/mainStore'
 import emitter from '~/utils/mitt'
-import { settings } from '~/logic'
 
-const { t } = useI18n()
+import type { GridLayoutIcon } from './types'
+import { HomeSubPage } from './types'
 
-const handleBackToTop = inject('handleBackToTop') as (targetScrollTop: number) => void
+const mainStore = useMainStore()
+const { handleBackToTop, scrollbarRef } = useBewlyApp()
+const handleThrottledBackToTop = useThrottleFn((targetScrollTop: number = 0) => handleBackToTop(targetScrollTop), 1000)
 
-const recommendContentKey = ref<string>(`recommendContent${Number(new Date())}`)
 const activatedPage = ref<HomeSubPage>(HomeSubPage.ForYou)
-const pages = { ForYou, Following, SubscribedSeries, Trending, Ranking }
+const pages = {
+  [HomeSubPage.ForYou]: defineAsyncComponent(() => import('./components/ForYou.vue')),
+  [HomeSubPage.Following]: defineAsyncComponent(() => import('./components/Following.vue')),
+  [HomeSubPage.SubscribedSeries]: defineAsyncComponent(() => import('./components/SubscribedSeries.vue')),
+  [HomeSubPage.Trending]: defineAsyncComponent(() => import('./components/Trending.vue')),
+  [HomeSubPage.Ranking]: defineAsyncComponent(() => import('./components/Ranking.vue')),
+  [HomeSubPage.Live]: defineAsyncComponent(() => import('./components/Live.vue')),
+}
 const showSearchPageMode = ref<boolean>(false)
 const shouldMoveTabsUp = ref<boolean>(false)
-
-const tabs = computed((): HomeTab[] => {
+const tabContentLoading = ref<boolean>(false)
+const currentTabs = ref<HomeTab[]>([])
+const tabPageRef = ref()
+const topBarVisibility = ref<boolean>(false)
+const gridLayoutIcons = computed((): GridLayoutIcon[] => {
   return [
-    {
-      label: t('home.for_you'),
-      value: HomeSubPage.ForYou,
-    },
-    {
-      label: t('home.following'),
-      value: HomeSubPage.Following,
-    },
-    {
-      label: t('home.subscribed_series'),
-      value: HomeSubPage.SubscribedSeries,
-    },
-    {
-      label: t('home.trending'),
-      value: HomeSubPage.Trending,
-    },
-    {
-      label: t('home.ranking'),
-      value: HomeSubPage.Ranking,
-    },
+    { icon: 'i-mingcute:table-3-line', iconActivated: 'i-mingcute:table-3-fill', value: 'adaptive' },
+    { icon: 'i-mingcute:layout-grid-line', iconActivated: 'i-mingcute:layout-grid-fill', value: 'twoColumns' },
+    { icon: 'i-mingcute:list-check-3-line', iconActivated: 'i-mingcute:list-check-3-fill', value: 'oneColumn' },
   ]
 })
 
-watch(() => activatedPage.value, () => {
-  handleBackToTop(settings.value.useSearchPageModeOnHomePage ? 510 : 0)
+// use Json stringify to watch the changes of the array item properties
+watch(() => JSON.stringify(settings.value.homePageTabVisibilityList), () => {
+  currentTabs.value = computeTabs()
 })
+
+function computeTabs(): HomeTab[] {
+  // if homePageTabVisibilityList not fresh , set it to default
+  if (!settings.value.homePageTabVisibilityList.length || settings.value.homePageTabVisibilityList.length !== mainStore.homeTabs.length)
+    settings.value.homePageTabVisibilityList = mainStore.homeTabs.map(tab => ({ page: tab.page, visible: true }))
+
+  const targetTabs: HomeTab[] = []
+
+  for (const tab of settings.value.homePageTabVisibilityList) {
+    tab.visible && targetTabs.push({
+      i18nKey: (mainStore.homeTabs.find(defaultTab => defaultTab.page === tab.page) || {})?.i18nKey || tab.page,
+      page: tab.page,
+    })
+  }
+
+  return targetTabs
+}
 
 onMounted(() => {
   showSearchPageMode.value = true
-  emitter.off('pageRefresh')
-  emitter.on('pageRefresh', async () => {
-    recommendContentKey.value = `recommendContent${Number(new Date())}`
-  })
-  emitter.off('topBarVisibleChange')
-  emitter.on('topBarVisibleChange', (val) => {
+  emitter.off(TOP_BAR_VISIBILITY_CHANGE)
+  emitter.on(TOP_BAR_VISIBILITY_CHANGE, (val) => {
+    topBarVisibility.value = val
     shouldMoveTabsUp.value = false
 
     // Allow moving tabs up only when the top bar is not hidden & is set to auto-hide
     // This feature is primarily designed to compatible with the Bilibili Evolved's top bar
     // Even when the BewlyBewly top bar is hidden, the Bilibili Evolved top bar still exists, so not moving up
     if (settings.value.autoHideTopBar && settings.value.showTopBar) {
-      if (val)
-        shouldMoveTabsUp.value = false
+      if (!settings.value.useSearchPageModeOnHomePage) {
+        if (val)
+          shouldMoveTabsUp.value = false
 
-      else
-        shouldMoveTabsUp.value = true
+        else
+          shouldMoveTabsUp.value = true
+      }
+      else {
+        // fix #349
+        const osInstance = scrollbarRef.value?.osInstance()
+        const scrollTop = osInstance.elements().viewport.scrollTop as number
+
+        if (val)
+          shouldMoveTabsUp.value = false
+
+        else if (scrollTop > 510 + 40)
+          shouldMoveTabsUp.value = true
+      }
     }
   })
+
+  currentTabs.value = computeTabs()
+  activatedPage.value = currentTabs.value[0].page
 })
 
 onUnmounted(() => {
-  emitter.off('pageRefresh')
-  emitter.off('topBarVisibleChange')
+  emitter.off(TOP_BAR_VISIBILITY_CHANGE)
 })
+
+function handleChangeTab(tab: HomeTab) {
+  if (activatedPage.value === tab.page) {
+    const osInstance = scrollbarRef.value?.osInstance()
+    const scrollTop = osInstance.elements().viewport.scrollTop as number
+
+    if ((!settings.value.useSearchPageModeOnHomePage && scrollTop > 0) || (settings.value.useSearchPageModeOnHomePage && scrollTop > 510)) {
+      handleThrottledBackToTop(settings.value.useSearchPageModeOnHomePage ? 510 : 0)
+    }
+    else {
+      if (tabContentLoading.value)
+        return
+      tabPageRef.value && tabPageRef.value.initData()
+    }
+    return
+  }
+  else {
+    handleThrottledBackToTop(settings.value.useSearchPageModeOnHomePage ? 510 : 0)
+  }
+
+  if (tabContentLoading.value)
+    toggleTabContentLoading(false)
+
+  activatedPage.value = tab.page
+}
+
+function toggleTabContentLoading(loading: boolean) {
+  tabContentLoading.value = loading
+}
 </script>
 
 <template>
@@ -90,12 +142,12 @@ onUnmounted(() => {
           pos="absolute left-0 top-0" w-full h-inherit bg="cover center" z-1
           pointer-events-none
           :style="{
-            backgroundImage: `url(${settings.searchPageWallpaper})`,
+            backgroundImage: `url('${settings.searchPageWallpaper}')`,
             backgroundAttachment: settings.searchPageModeWallpaperFixed ? 'fixed' : 'unset',
           }"
         />
         <!-- background mask -->
-        <transition name="fade">
+        <Transition name="fade">
           <div
             v-if="(!settings.individuallySetSearchPageWallpaper && settings.enableWallpaperMasking) || (settings.searchPageEnableWallpaperMasking)"
             pos="relative left-0 top-0" w-full h-inherit pointer-events-none duration-300
@@ -111,7 +163,7 @@ onUnmounted(() => {
               }"
             />
           </div>
-        </transition>
+        </Transition>
       </div>
     </Transition>
 
@@ -140,27 +192,86 @@ onUnmounted(() => {
       </Transition>
 
       <header
-        pos="sticky top-80px" w-fit z-9 mb-9 duration-300
-        ease-in-out
+        pos="sticky top-[calc(var(--bew-top-bar-height)+10px)]" w-full z-9 m="b-4" duration-300
+        ease-in-out flex="~ justify-between items-start gap-4"
         :class="{ hide: shouldMoveTabsUp }"
       >
-        <ul flex="~ items-center gap-3 wrap">
-          <li
-            v-for="tab in tabs" :key="tab.value"
-            px-4 lh-35px bg="$bew-elevated-1 hover:$bew-elevated-1-hover" backdrop-glass rounded="$bew-radius"
-            cursor-pointer shadow="$bew-shadow-1" box-border border="1 $bew-border-color" duration-300
-            :class="{ 'tab-activated': activatedPage === tab.value }"
-            @click="activatedPage = tab.value"
+        <section
+          v-if="!(!settings.alwaysShowTabsOnHomePage && currentTabs.length === 1)"
+          style="backdrop-filter: var(--bew-filter-glass-1)"
+          bg="$bew-elevated" p-1
+          w="[calc(100vw-280px)]" max-w="fit"
+          h-38px rounded-full
+          text="sm"
+          shadow="[var(--bew-shadow-1),var(--bew-shadow-edge-glow-1)]"
+          box-border border="1 $bew-border-color"
+        >
+          <OverlayScrollbarsComponent
+            class="home-tabs-inside"
+            element="div" defer
+            :options="{
+              x: 'scroll',
+              y: 'hidden',
+            }"
+            h-full of-hidden
           >
-            <span class="text-center">{{ tab.label }}</span>
-          </li>
-        </ul>
+            <button
+              v-for="tab in currentTabs" :key="tab.page"
+              :class="{ 'tab-activated': activatedPage === tab.page }"
+              px-3 h-inherit
+              bg="transparent hover:$bew-fill-2" text="$bew-text-2 hover:$bew-text-1" fw-bold rounded-full
+              cursor-pointer duration-300
+              flex="~ gap-2 items-center shrink-0" relative
+              @click="handleChangeTab(tab)"
+            >
+              <span class="text-center">{{ $t(tab.i18nKey) }}</span>
+
+              <Transition name="fade">
+                <div
+                  v-show="activatedPage === tab.page && tabContentLoading"
+                  i-svg-spinners:ring-resize
+                  pos="absolute right-4px top-4px" duration-300
+                  text="8px white"
+                />
+              </Transition>
+            </button>
+          </OverlayScrollbarsComponent>
+        </section>
+
+        <div
+          v-if="settings.enableGridLayoutSwitcher"
+          style="backdrop-filter: var(--bew-filter-glass-1)"
+          flex="~ gap-1 shrink-0" p-1 h-38px bg="$bew-elevated" transform-gpu
+          ml-auto rounded-full
+          shadow="[var(--bew-shadow-1),var(--bew-shadow-edge-glow-1)]"
+          box-border border="1 $bew-border-color"
+        >
+          <div
+            v-for="icon in gridLayoutIcons" :key="icon.value"
+            :class="{ 'grid-layout-item-activated': gridLayout.home === icon.value }"
+            flex="~ justify-center items-center"
+            h-full aspect-square text="$bew-text-2 hover:$bew-text-1"
+            rounded-full bg="hover:$bew-fill-2" duration-300
+            cursor-pointer
+            @click="gridLayout.home = icon.value"
+          >
+            <div :class="gridLayout.home === icon.value ? icon.iconActivated : icon.icon" text-base />
+          </div>
+        </div>
       </header>
 
       <Transition name="page-fade">
-        <Component :is="pages[activatedPage]" :key="recommendContentKey" />
+        <KeepAlive include="ForYou">
+          <Component
+            :is="pages[activatedPage]" :key="activatedPage"
+            ref="tabPageRef"
+            :grid-layout="gridLayout.home"
+            :top-bar-visibility="topBarVisibility"
+            @before-loading="toggleTabContentLoading(true)"
+            @after-loading="toggleTabContentLoading(false)"
+          />
+        </KeepAlive>
       </Transition>
-      <!-- <RecommendContent :key="recommendContentKey" /> -->
     </main>
   </div>
 </template>
@@ -168,34 +279,46 @@ onUnmounted(() => {
 <style scoped lang="scss">
 .bg-enter-active,
 .bg-leave-active {
-  --at-apply: duration-1000 ease-in-out;
+  --uno: "duration-1000 ease-in-out";
 }
 .bg-enter-from,
 .bg-leave-to {
-  --at-apply: h-100vh;
+  --uno: "h-100vh";
 }
 .bg-leave-to {
-  --at-apply: hidden
+  --uno: "hidden";
 }
 
 .content-enter-active,
 .content-leave-active {
-  --at-apply: duration-1000 ease-in-out;
+  --uno: "duration-1000 ease-in-out";
 }
 .content-enter-from,
 .content-leave-to {
-  --at-apply: opacity-0 h-100vh;
+  --uno: "opacity-0 h-100vh";
 }
 .content-leave-to {
-  --at-apply: hidden
+  --uno: "hidden";
 }
 
 .hide {
-  --at-apply: important-translate-y--70px;
+  --uno: "important-translate-y--70px";
+}
+
+.home-tabs-inside {
+  :deep([data-overlayscrollbars-contents]) {
+    --uno: "flex items-center gap-1 h-inherit rounded-$bew-radius-half";
+  }
+  :deep(.os-scrollbar) {
+    --uno: "mb--4px";
+  }
 }
 
 .tab-activated {
-  --at-apply: bg-$bew-theme-color dark:bg-white color-white dark:color-black
-    border-$bew-theme-color dark:border-white;
+  --uno: "bg-$bew-theme-color-auto text-$bew-text-auto";
+}
+
+.grid-layout-item-activated {
+  --uno: "bg-$bew-theme-color-auto text-$bew-text-auto";
 }
 </style>

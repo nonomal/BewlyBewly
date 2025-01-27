@@ -1,32 +1,37 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import { getUserID, isHomePage } from '~/utils/main'
+
+import { getUserID } from '~/utils/main'
 
 const { t } = useI18n()
 
-const list = [
-  { name: t('topbar.notifications'), url: '//message.bilibili.com' },
-  { name: t('topbar.moments'), url: '//t.bilibili.com/' },
-  { name: t('topbar.favorites'), url: `//space.bilibili.com/${getUserID ?? ''}/favlist` },
-  { name: t('topbar.history'), url: '//www.bilibili.com/account/history' },
-  { name: t('topbar.creative_center'), url: '//member.bilibili.com/platform/home' },
-]
+const list = computed((): { name: string, url: string, icon: string }[] => [
+  { name: t('topbar.notifications'), url: '//message.bilibili.com', icon: 'i-mingcute:notification-line' },
+  { name: t('topbar.moments'), url: '//t.bilibili.com/', icon: 'i-tabler:windmill' },
+  { name: t('topbar.favorites'), url: `//space.bilibili.com/${getUserID() ?? ''}/favlist`, icon: 'i-mingcute:star-line' },
+  { name: t('topbar.history'), url: '//www.bilibili.com/history', icon: 'i-mingcute:time-line' },
+  { name: t('topbar.watch_later'), url: '//www.bilibili.com/watchlater/#/list', icon: 'i-mingcute:carplay-line' },
+  { name: t('topbar.creative_center'), url: '//member.bilibili.com/platform/home', icon: 'i-mingcute:bulb-line' },
+])
 </script>
 
 <template>
   <div
-    bg="$bew-elevated-solid-1"
-    w="170px"
+    style="backdrop-filter: var(--bew-filter-glass-1);"
+    h="[calc(100vh-100px)]" max-h-264px important-overflow-y-auto
+    w="180px"
+    bg="$bew-elevated"
     p="4"
     rounded="$bew-radius"
     flex="~ col"
-    style="box-shadow: var(--bew-shadow-3)"
+    shadow="[var(--bew-shadow-edge-glow-1),var(--bew-shadow-3)]"
+    border="1 $bew-border-color"
   >
-    <a
+    <ALink
       v-for="item in list"
       :key="item.name"
       :href="item.url"
-      :target="isHomePage() ? '_blank' : '_self'"
+      type="topBar"
       pos="relative"
       p="x-4 y-2"
       bg="hover:$bew-fill-2"
@@ -34,11 +39,10 @@ const list = [
       transition="all duration-300"
       m="b-1 last:b-0"
       flex="~"
-      justify="between"
       items="center"
-      h="35px"
     >
-      {{ item.name }}
-    </a>
+      <i :class="item.icon" class="mr-4" />
+      <span class="flex-1">{{ item.name }}</span>
+    </ALink>
   </div>
 </template>

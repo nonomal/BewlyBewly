@@ -1,7 +1,8 @@
 import fs from 'fs-extra'
 import type { Manifest } from 'webextension-polyfill'
+
 import type PkgType from '../package.json'
-import { isDev, isFirefox, port, r } from '../scripts/utils'
+import { isDev, isFirefox, isSafari, port, r } from '../scripts/utils'
 
 export async function getManifest() {
   const pkg = await fs.readJSON(r('package.json')) as typeof PkgType
@@ -22,31 +23,69 @@ export async function getManifest() {
     //   page: './dist/options/index.html',
     //   open_in_tab: true,
     // },
-    background: isFirefox
-      ? { scripts: ['./dist/background/index.mjs'] }
-      : { service_worker: './dist/background/index.mjs' },
+
+    // Setting `persistent` to true in Manifest V3 results in an error in Firefox
+    // https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/background
+    background: (isFirefox || isSafari)
+      ? { scripts: ['./dist/background/index.js'], persistent: isFirefox ? undefined : false }
+      : { service_worker: './dist/background/index.js' },
+
     icons: {
       16: './assets/icon-512.png',
       48: './assets/icon-512.png',
       128: './assets/icon-512.png',
     },
     permissions: [
-      'tabs',
       'storage',
-      'scripting',
       'declarativeNetRequest',
+      'tabs',
+      ...isFirefox
+        ? ['webRequest', 'webRequestBlocking', 'cookies']
+        : [],
     ],
     host_permissions: [
       '*://*.bilibili.com/*',
-      '*://*.mcbbs.net/*',
       '*://*.hdslb.com/*',
     ],
     content_scripts: [
       {
-        matches: ['*://www.bilibili.com/*', '*://search.bilibili.com/*', '*://t.bilibili.com/*', '*://space.bilibili.com/*', '*://message.bilibili.com/*'],
+        matches: [
+          '*://www.bilibili.com/*',
+          '*://search.bilibili.com/*',
+          '*://t.bilibili.com/*',
+          '*://space.bilibili.com/*',
+          '*://message.bilibili.com/*',
+          '*://member.bilibili.com/*',
+          '*://account.bilibili.com/*',
+          '*://www.hdslb.com/*',
+          '*://passport.bilibili.com/*',
+          '*://music.bilibili.com/*',
+        ],
         js: ['./dist/contentScripts/index.global.js'],
+        css: ['./dist/contentScripts/style.css'],
         run_at: 'document_start',
         match_about_blank: true,
+        all_frames: true,
+      },
+      {
+        matches: [
+          '*://www.bilibili.com/*',
+          '*://search.bilibili.com/*',
+          '*://t.bilibili.com/*',
+          '*://space.bilibili.com/*',
+          '*://message.bilibili.com/*',
+          '*://member.bilibili.com/*',
+          '*://account.bilibili.com/*',
+          '*://www.hdslb.com/*',
+          '*://passport.bilibili.com/*',
+          '*://music.bilibili.com/*',
+        ],
+        js: ['./dist/inject/index.js'],
+        run_at: 'document_start',
+        all_frames: true,
+        // eslint-disable-next-line ts/ban-ts-comment
+        // @ts-expect-error
+        world: 'MAIN',
       },
     ],
     web_accessible_resources: [
@@ -66,18 +105,31 @@ export async function getManifest() {
             ? `script-src 'self' http://localhost:${port}; object-src 'self' http://localhost:${port}`
             : 'script-src \'self\'; object-src \'self\'',
         },
-    // @ts-expect-error Manifest.WebExtensionManifest type doesn't not support declarative_net_request check
-    declarative_net_request: {
-      rule_resources: [{
-        id: 'ruleset_1',
-        enabled: true,
-        path: 'assets/rules.json',
-      }],
-    },
+    ...isFirefox
+      ? {}
+      : {
+          declarative_net_request: {
+            rule_resources: [
+              {
+                id: 'ruleset_1',
+                enabled: true,
+                path: 'assets/rules.json',
+              },
+            ],
+          },
+        },
   }
 
   if (isDev)
     manifest.permissions?.push('webNavigation')
+
+  if (isFirefox) {
+    manifest.browser_specific_settings = {
+      gecko: {
+        id: 'addon@bewlybewly.com',
+      },
+    }
+  }
 
   return manifest
 }
